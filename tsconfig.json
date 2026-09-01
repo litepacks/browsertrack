@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@browserdiag/core": ["./packages/core/src/index.ts"],
+      "browsertrack/core": ["./packages/core/src/index.ts"],
+      "browsertrack/client": ["./packages/client/src/index.ts"],
+      "browsertrack/daemon": ["./packages/daemon/src/index.ts"],
+      "browsertrack/mcp": ["./packages/mcp/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "packages/**/*", "test/**/*"]
+}

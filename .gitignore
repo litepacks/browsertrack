@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-docs/
+.docboot/
+.docup/
+*.log
+.DS_Store
+*.db
+*.db-journal
+/tmp/

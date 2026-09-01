@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrowserTrack Fixture App</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 2rem; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    .container { max-width: 800px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+    
+    header { border-bottom: 1px solid var(--border); padding-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+    .badge { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: rgba(59, 130, 246, 0.2); color: var(--primary); border: 1px solid var(--primary); }
+    
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; }
+    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+    
+    button {
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid transparent;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+    button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+
+    .btn-danger { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); }
+    .btn-warning { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border-color: rgba(245, 158, 11, 0.3); }
+    .btn-primary { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
+    .btn-success { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3); }
+
+    .element-card {
+      border: 2px dashed rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.05);
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-top: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #log-panel {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      max-height: 180px;
+      overflow-y: auto;
+      color: #38bdf8;
+    }
+    .log-item { margin-bottom: 0.3rem; }
+  </style>
+
+  <!-- BrowserTrack Client Auto-Injection -->
+  <script src="http://127.0.0.1:7331/client.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧪 BrowserTrack Fixture App</h1>
+      <span class="badge" id="status-badge">Connecting...</span>
+    </header>
+
+    <!-- Error Triggers Card -->
+    <div class="card">
+      <div class="card-title">1. Runtime & Console Triggers</div>
+      <div class="grid">
+        <button class="btn-danger" id="btn-throw-error" data-testid="throw-error-btn">
+          💥 Throw Error
+        </button>
+        <button class="btn-danger" id="btn-unhandled-promise" data-testid="unhandled-promise-btn">
+          ⚠️ Unhandled Promise
+        </button>
+        <button class="btn-warning" id="btn-console-error" data-testid="console-error-btn">
+          📝 Console Error
+        </button>
+        <button class="btn-warning" id="btn-console-warn" data-testid="console-warn-btn">
+          ⚠️ Console Warn
+        </button>
+      </div>
+    </div>
+
+    <!-- Network Triggers Card -->
+    <div class="card">
+      <div class="card-title">2. Network & Async Triggers</div>
+      <div class="grid">
+        <button class="btn-danger" id="btn-500-request" data-testid="fail-500-btn">
+          🌐 500 Network Request
+        </button>
+        <button class="btn-danger" id="btn-delayed-error" data-testid="delayed-error-btn">
+          ⏱️ Delayed Error (1s)
+        </button>
+        <button class="btn-primary" id="btn-navigate" data-testid="navigate-btn">
+          🔀 Navigate /users/42
+        </button>
+      </div>
+    </div>
+
+    <!-- Element Error with Visual Card -->
+    <div class="card">
+      <div class="card-title">3. Element Target & Verification Probe</div>
+      <div class="element-card" id="user-card" data-testid="user-card">
+        <div>
+          <strong id="user-name">User: John Doe (#42)</strong>
+          <p style="color: var(--muted); font-size: 0.85rem;" id="user-status">Status: Active</p>
+        </div>
+        <button class="btn-danger" id="btn-element-error" data-testid="element-error-btn">
+          Trigger Element Error
+        </button>
+      </div>
+    </div>
+
+    <!-- Visual Notes & Layout Cards -->
+    <div class="card">
+      <div class="card-title">4. Visual Notes & Responsive Layout (Alt+Click to Annotate)</div>
+      <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem;">
+        Hold <kbd style="background:#334155;padding:2px 5px;border-radius:3px;">Alt</kbd> and click any element below to leave a visual note for coding agents.
+      </p>
+
+      <!-- Overflowing Stats Card (Simulating mobile layout issue) -->
+      <div class="stats-card" id="stats-banner" data-testid="stats-banner" style="background:#1e1b4b;border:1px solid #4338ca;padding:1rem;border-radius:0.5rem;display:flex;gap:1.5rem;min-width:600px;overflow-x:auto;">
+        <div>
+          <div style="font-size:0.75rem;color:#a5b4fc;">MONTHLY ACTIVE USERS</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#e0e7ff;">142,890</div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem;color:#a5b4fc;">PAGEVIEWS (30D)</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#e0e7ff;">1,249,000</div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem;color:#a5b4fc;">SERVER RESPONSE TIME</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#e0e7ff;">42ms</div>
+        </div>
+      </div>
+
+      <!-- Sensitive Input masking demonstration -->
+      <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+        <input type="password" id="admin-pass" value="super-secret-password" data-testid="admin-pass-input" style="background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:4px;padding:6px 10px;font-size:12px;" />
+        <button class="btn-primary" id="btn-manual-note" style="padding:6px 12px;font-size:12px;">
+          📝 Note on Stats
+        </button>
+        <button class="btn-primary" id="btn-select-element" style="padding:6px 12px;font-size:12px;background:rgba(59,130,246,0.25);">
+          🎯 Element Seç
+        </button>
+        <button class="btn-primary" id="btn-select-region" style="padding:6px 12px;font-size:12px;background:rgba(56,189,248,0.25);color:#38bdf8;">
+          📐 Alan / Bölge Seç (Drag)
+        </button>
+        <button class="btn-primary" id="btn-page-note" style="padding:6px 12px;font-size:12px;background:rgba(168,85,247,0.25);color:#c084fc;">
+          📄 Tüm Sayfa
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Event Log -->
+    <div class="card">
+      <div class="card-title">Event Log</div>
+      <div id="log-panel">
+        <div class="log-item">[Init] Fixture app loaded. Ready for diagnostics testing.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const logPanel = document.getElementById('log-panel');
+    function appendLog(msg) {
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logPanel.appendChild(div);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    // 1. Throw Error
+    document.getElementById('btn-throw-error').addEventListener('click', () => {
+      appendLog('Throwing synchronous Error');
+      throw new TypeError("Cannot read properties of undefined (reading 'calculateTotal')");
+    });
+
+    // 2. Unhandled Promise
+    document.getElementById('btn-unhandled-promise').addEventListener('click', () => {
+      appendLog('Triggering Unhandled Promise Rejection');
+      new Promise((_, reject) => {
+        reject(new Error("API authentication session expired (token expired)"));
+      });
+    });
+
+    // 3. Console Error
+    document.getElementById('btn-console-error').addEventListener('click', () => {
+      appendLog('Logging console.error');
+      console.error("Failed to render UserProfileComponent: missing user data", { id: 42, role: 'developer' });
+    });
+
+    // 4. Console Warn
+    document.getElementById('btn-console-warn').addEventListener('click', () => {
+      appendLog('Logging console.warn');
+      console.warn("Component UserCard is using deprecated prop 'legacyFormat'");
+    });
+
+    // 5. 500 Network Request
+    document.getElementById('btn-500-request').addEventListener('click', async () => {
+      appendLog('Sending fetch request to failing endpoint');
+      try {
+        await fetch('http://127.0.0.1:7331/api/invalid-endpoint-trigger-404?token=secret123');
+      } catch (e) {
+        console.error('Fetch threw error:', e);
+      }
+    });
+
+    // 6. Delayed Error
+    document.getElementById('btn-delayed-error').addEventListener('click', () => {
+      appendLog('Scheduled delayed error in 1000ms');
+      setTimeout(() => {
+        throw new ReferenceError("UserProfileService is not defined at background poll");
+      }, 1000);
+    });
+
+    // 7. SPA Navigation
+    document.getElementById('btn-navigate').addEventListener('click', () => {
+      const newUrl = '/users/42';
+      history.pushState({ page: 42 }, 'User Profile', newUrl);
+      appendLog(`Navigated history.pushState to ${newUrl}`);
+    });
+
+    // 8. Element Error
+    document.getElementById('btn-element-error').addEventListener('click', () => {
+      appendLog('Triggering error on user-card element');
+      throw new Error("Element user-card encountered unexpected state rendering card");
+    });
+
+    // 9. Manual Visual Note triggers
+    document.getElementById('btn-manual-note').addEventListener('click', () => {
+      appendLog('Opening visual note editor on stats-banner');
+      const stats = document.getElementById('stats-banner');
+      if (window.__BROWSERTRACK__?.getClient()) {
+        window.__BROWSERTRACK__.getClient().openNoteEditor(stats);
+      }
+    });
+
+    document.getElementById('btn-select-element').addEventListener('click', () => {
+      appendLog('Activated Element selection mode (click any element)');
+      if (window.__BROWSERTRACK__?.getClient()) {
+        window.__BROWSERTRACK__.getClient().startElementSelection();
+      }
+    });
+
+    document.getElementById('btn-select-region').addEventListener('click', () => {
+      appendLog('Activated Region selection mode (drag rectangle on screen)');
+      if (window.__BROWSERTRACK__?.getClient()) {
+        window.__BROWSERTRACK__.getClient().startRegionSelection();
+      }
+    });
+
+    document.getElementById('btn-page-note').addEventListener('click', () => {
+      appendLog('Opening full page note editor');
+      if (window.__BROWSERTRACK__?.getClient()) {
+        window.__BROWSERTRACK__.getClient().openNoteEditor(document.body, 'page');
+      }
+    });
+
+    // Check client status
+    setInterval(() => {
+      const badge = document.getElementById('status-badge');
+      if (window.__BROWSERTRACK__ && window.__BROWSERTRACK__.getClient()) {
+        badge.textContent = '🟢 BrowserTrack Active';
+        badge.style.borderColor = 'var(--success)';
+        badge.style.color = 'var(--success)';
+        badge.style.background = 'rgba(16, 185, 129, 0.2)';
+      } else {
+        badge.textContent = '⚪ Daemon Offline (Safe)';
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
