@@ -70,10 +70,12 @@ When an error or unexpected behavior occurs in the frontend:
 | `get_page_state` | Query current URL, document title, readyState, and active element | `sessionId` |
 | `capture_element` | Capture an on-demand screenshot of a selector or full viewport | `selector`, `sessionId` |
 
-### 📝 Visual Notes & Layout Inspector
+### 📝 Visual Notes, Scenarios & Layout Inspector
 | MCP Tool | Purpose | Key Arguments |
 | :--- | :--- | :--- |
-| `list_notes` | List visual annotations left on elements/regions | `status`, `projectId`, `limit` |
+| `list_notes` | List visual annotations left on elements/regions | `status`, `projectId`, `scenarioId`, `limit` |
+| `list_scenarios` | List multi-step reproduction flows and user scenarios | `status`, `projectId`, `limit` |
+| `get_scenario` | Retrieve full chronological step-by-step reproduction flow | `scenarioId` *(required)* |
 | `get_note` | Get full note details (DOM context, selector, bounding rect, screenshot) | `noteId` *(required)* |
 | `capture_note_context` | Inspect live DOM bounding box, styles, and overflow on an element | `selector` *(required)*, `sessionId` |
 | `verify_note` | Run automated layout verification and before/after comparison | `noteId` *(required)*, `observationWindowMs` |

@@ -252,6 +252,7 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
     case 'list_notes': {
       const notes = db.listNotes({
         projectId: args.projectId,
+        scenarioId: args.scenarioId,
         status: args.status,
         limit: args.limit || 20,
       });
@@ -263,12 +264,66 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
           type: n.type,
           status: n.status,
           route: n.route,
+          scenarioId: n.scenarioId,
+          stepNumber: n.stepNumber,
+          scenarioTitle: n.scenarioTitle,
           viewport: `${n.viewport.width} × ${n.viewport.height}`,
           target: n.target?.selector || n.type,
           message: n.message,
           screenshotAvailable: !!n.screenshots?.original,
           createdAt: n.createdAt,
         })),
+      };
+    }
+
+    case 'list_scenarios': {
+      const scenarios = db.listScenarios({
+        projectId: args.projectId,
+        status: args.status,
+        limit: args.limit || 20,
+      });
+
+      return {
+        total: scenarios.length,
+        scenarios: scenarios.map((s) => ({
+          id: s.id,
+          title: s.title,
+          stepsCount: s.stepsCount,
+          status: s.status,
+          route: s.route,
+          firstStepAt: s.firstStepAt,
+          lastStepAt: s.lastStepAt,
+        })),
+      };
+    }
+
+    case 'get_scenario': {
+      const scenario = db.getScenario(args.scenarioId);
+      if (!scenario) {
+        throw new Error(`Scenario '${args.scenarioId}' not found.`);
+      }
+
+      return {
+        id: scenario.id,
+        title: scenario.title,
+        stepsCount: scenario.stepsCount,
+        status: scenario.status,
+        steps: scenario.steps.map((step) => ({
+          id: step.id,
+          stepNumber: step.stepNumber,
+          type: step.type,
+          message: step.message,
+          route: step.route,
+          url: step.url,
+          targetSelector: step.target?.selector,
+          boundingRect: step.target?.boundingRect || step.region,
+          elementContext: step.elementContext,
+          screenshot: step.screenshots?.original,
+          status: step.status,
+          createdAt: step.createdAt,
+        })),
+        createdAt: scenario.createdAt,
+        updatedAt: scenario.updatedAt,
       };
     }
 
@@ -285,6 +340,9 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
         type: note.type,
         status: note.status,
         message: note.message,
+        scenarioId: note.scenarioId,
+        stepNumber: note.stepNumber,
+        scenarioTitle: note.scenarioTitle,
         route: note.route,
         url: note.url,
         viewport: note.viewport,

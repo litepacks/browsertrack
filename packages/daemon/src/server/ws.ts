@@ -134,10 +134,17 @@ export function setupWebSocketServer(
             region: data.region,
             screenshot: data.screenshot,
             incidentId: data.incidentId,
+            scenarioId: data.scenarioId,
+            stepNumber: data.stepNumber,
+            scenarioTitle: data.scenarioTitle,
           });
 
           if (verbose) {
-            console.log(`[BrowserTrack] Visual note created: ${note.id} on ${note.route} ("${note.message}")`);
+            console.log(
+              `[BrowserTrack] Visual note created: ${note.id} on ${note.route} ("${note.message}")${
+                note.scenarioId ? ` [Scenario: ${note.scenarioTitle || note.scenarioId} Step ${note.stepNumber}]` : ''
+              }`
+            );
           }
 
           ws.send(
@@ -145,6 +152,8 @@ export function setupWebSocketServer(
               type: 'note_created_ack',
               noteId: note.id,
               status: note.status,
+              scenarioId: note.scenarioId,
+              stepNumber: note.stepNumber,
             })
           );
 
@@ -190,6 +199,19 @@ export function setupWebSocketServer(
             db.deleteNote(data.noteId);
             const allNotes = db.listNotes({ projectId: note.projectId, limit: 100 });
             sessionManager.broadcastToProject(note.projectId, {
+              type: 'notes_sync',
+              notes: allNotes,
+            });
+          }
+          return;
+        }
+
+        if (data.type === 'delete_scenario' && data.scenarioId) {
+          const scenario = db.getScenario(data.scenarioId);
+          if (scenario) {
+            db.deleteScenario(data.scenarioId);
+            const allNotes = db.listNotes({ projectId: scenario.projectId, limit: 100 });
+            sessionManager.broadcastToProject(scenario.projectId, {
               type: 'notes_sync',
               notes: allNotes,
             });

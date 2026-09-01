@@ -73,6 +73,9 @@ export interface VisualNote {
   region?: RegionContext;
   status: NoteStatus;
   incidentId?: string;
+  scenarioId?: string;
+  stepNumber?: number;
+  scenarioTitle?: string;
   screenshots?: {
     original?: string;
     after?: string;
@@ -80,6 +83,28 @@ export interface VisualNote {
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string;
+}
+
+export interface ScenarioOverview {
+  id: string;
+  projectId: string;
+  title: string;
+  stepsCount: number;
+  status: NoteStatus;
+  route: string;
+  firstStepAt: string;
+  lastStepAt: string;
+}
+
+export interface ScenarioDetail {
+  id: string;
+  projectId: string;
+  title: string;
+  stepsCount: number;
+  status: NoteStatus;
+  steps: VisualNote[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NoteVerificationResult {

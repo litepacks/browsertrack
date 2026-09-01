@@ -39,8 +39,9 @@ graph TD
 
 - [Getting Started](./getting-started.md) — Quick installation and setup in under 2 minutes.
 - [Visual Notes & Annotations](./visual-notes.md) — Screen notes, region selection, and persistent markers.
+- [Multi-Step Scenarios & Flows](./scenarios-flows.md) — Sequential reproduction flows, Save & Next Step, and stepper walk-throughs.
 - [Incidents & Error Diagnostics](./incidents-diagnostics.md) — Ingest runtime errors, stack traces, and breadcrumbs.
 - [Closed-Loop Verification](./closed-loop-verification.md) — Automated bug-fix and layout verification.
-- [MCP Tool Reference](./mcp-reference.md) — Complete guide to all 16 MCP tools.
+- [MCP Tool Reference](./mcp-reference.md) — Complete guide to all MCP tools.
 - [Security & Redaction](./security-privacy.md) — Privacy architecture and `@visulima/redact` integration.
 - [CLI Reference](./cli.md) — Command-line interface usage.

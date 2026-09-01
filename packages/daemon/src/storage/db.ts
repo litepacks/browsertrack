@@ -15,6 +15,8 @@ import type {
   VisualNote,
   NoteStatus,
   NoteVerificationResult,
+  ScenarioOverview,
+  ScenarioDetail,
 } from '../../../core/src/index.js';
 
 export class StorageDB {
@@ -134,6 +136,9 @@ export class StorageDB {
         region_json TEXT,
         screenshot_path TEXT,
         incident_id TEXT,
+        scenario_id TEXT,
+        step_number INTEGER,
+        scenario_title TEXT,
         status TEXT DEFAULT 'OPEN',
         created_at TEXT,
         updated_at TEXT,
@@ -156,7 +161,19 @@ export class StorageDB {
       CREATE INDEX IF NOT EXISTS idx_incidents_project ON incidents(project_id, status);
       CREATE INDEX IF NOT EXISTS idx_incidents_fp ON incidents(fingerprint);
       CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id, status);
+      CREATE INDEX IF NOT EXISTS idx_notes_scenario ON notes(scenario_id, step_number);
     `);
+
+    // Schema migrations for scenario fields
+    try {
+      this.db.exec('ALTER TABLE notes ADD COLUMN scenario_id TEXT;');
+    } catch {}
+    try {
+      this.db.exec('ALTER TABLE notes ADD COLUMN step_number INTEGER;');
+    } catch {}
+    try {
+      this.db.exec('ALTER TABLE notes ADD COLUMN scenario_title TEXT;');
+    } catch {}
   }
 
   // --- PROJECTS ---
@@ -539,8 +556,8 @@ export class StorageDB {
         `INSERT INTO notes (
           id, project_id, session_id, type, message, route, url,
           viewport_json, scroll_json, target_json, element_context_json, region_json,
-          screenshot_path, incident_id, status, created_at, updated_at, resolved_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          screenshot_path, incident_id, scenario_id, step_number, scenario_title, status, created_at, updated_at, resolved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         note.id,
@@ -557,6 +574,9 @@ export class StorageDB {
         note.region ? JSON.stringify(note.region) : null,
         note.screenshots?.original || null,
         note.incidentId || null,
+        note.scenarioId || null,
+        note.stepNumber ?? null,
+        note.scenarioTitle || null,
         note.status,
         note.createdAt,
         note.updatedAt,
@@ -570,7 +590,7 @@ export class StorageDB {
     return this.mapNoteRow(row);
   }
 
-  public listNotes(options: { projectId?: string; status?: NoteStatus; route?: string; limit?: number } = {}): VisualNote[] {
+  public listNotes(options: { projectId?: string; status?: NoteStatus; route?: string; scenarioId?: string; limit?: number } = {}): VisualNote[] {
     let sql = 'SELECT * FROM notes WHERE 1=1';
     const params: any[] = [];
 
@@ -586,6 +606,10 @@ export class StorageDB {
       sql += ' AND route = ?';
       params.push(options.route);
     }
+    if (options.scenarioId) {
+      sql += ' AND scenario_id = ?';
+      params.push(options.scenarioId);
+    }
 
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(options.limit || 50);
@@ -597,6 +621,82 @@ export class StorageDB {
   public deleteNote(id: string): void {
     this.db.prepare('DELETE FROM note_verifications WHERE note_id = ?').run(id);
     this.db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+  }
+
+  // --- SCENARIOS (MULTI-STEP FLOWS) ---
+  public listScenarios(options: { projectId?: string; status?: NoteStatus; limit?: number } = {}): ScenarioOverview[] {
+    let sql = `
+      SELECT 
+        scenario_id, 
+        project_id, 
+        COALESCE(MAX(scenario_title), 'Scenario') as title,
+        COUNT(id) as steps_count,
+        CASE WHEN SUM(CASE WHEN status != 'RESOLVED' THEN 1 ELSE 0 END) = 0 THEN 'RESOLVED' ELSE 'OPEN' END as status,
+        MIN(route) as route,
+        MIN(created_at) as first_step_at,
+        MAX(created_at) as last_step_at
+      FROM notes
+      WHERE scenario_id IS NOT NULL
+    `;
+    const params: any[] = [];
+    if (options.projectId) {
+      sql += ' AND (project_id = ? OR project_id IS NULL)';
+      params.push(options.projectId);
+    }
+    sql += ' GROUP BY scenario_id';
+
+    if (options.status) {
+      if (options.status === 'RESOLVED') {
+        sql += " HAVING SUM(CASE WHEN status != 'RESOLVED' THEN 1 ELSE 0 END) = 0";
+      } else {
+        sql += " HAVING SUM(CASE WHEN status != 'RESOLVED' THEN 1 ELSE 0 END) > 0";
+      }
+    }
+
+    sql += ' ORDER BY last_step_at DESC LIMIT ?';
+    params.push(options.limit || 50);
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map((r) => ({
+      id: r.scenario_id,
+      projectId: r.project_id,
+      title: r.title,
+      stepsCount: Number(r.steps_count),
+      status: r.status as NoteStatus,
+      route: r.route || '/',
+      firstStepAt: r.first_step_at,
+      lastStepAt: r.last_step_at,
+    }));
+  }
+
+  public getScenario(scenarioId: string): ScenarioDetail | null {
+    const rows = this.db
+      .prepare('SELECT * FROM notes WHERE scenario_id = ? ORDER BY COALESCE(step_number, 999999) ASC, created_at ASC')
+      .all(scenarioId) as any[];
+
+    if (!rows || rows.length === 0) return null;
+
+    const steps = rows.map((r) => this.mapNoteRow(r));
+    const title = steps.find((s) => s.scenarioTitle)?.scenarioTitle || `Scenario ${scenarioId}`;
+    const allResolved = steps.every((s) => s.status === 'RESOLVED');
+
+    return {
+      id: scenarioId,
+      projectId: steps[0].projectId,
+      title,
+      stepsCount: steps.length,
+      status: allResolved ? 'RESOLVED' : 'OPEN',
+      steps,
+      createdAt: steps[0].createdAt,
+      updatedAt: steps[steps.length - 1].updatedAt,
+    };
+  }
+
+  public deleteScenario(scenarioId: string): void {
+    const notes = this.db.prepare('SELECT id FROM notes WHERE scenario_id = ?').all(scenarioId) as any[];
+    for (const n of notes) {
+      this.deleteNote(n.id);
+    }
   }
 
   public updateNoteStatus(id: string, status: NoteStatus): void {
@@ -725,6 +825,9 @@ export class StorageDB {
       region: row.region_json ? JSON.parse(row.region_json) : undefined,
       status: row.status as NoteStatus,
       incidentId: row.incident_id || undefined,
+      scenarioId: row.scenario_id || undefined,
+      stepNumber: row.step_number != null ? Number(row.step_number) : undefined,
+      scenarioTitle: row.scenario_title || undefined,
       screenshots: row.screenshot_path
         ? {
             original: row.screenshot_path,

@@ -156,6 +156,7 @@ export const TOOLS: Tool[] = [
       type: 'object',
       properties: {
         projectId: { type: 'string', description: 'Filter notes by project ID or name' },
+        scenarioId: { type: 'string', description: 'Filter notes by scenario / flow ID' },
         status: {
           type: 'string',
           enum: ['OPEN', 'IN_PROGRESS', 'VERIFYING', 'RESOLVED', 'FAILED', 'INCONCLUSIVE'],
@@ -163,6 +164,33 @@ export const TOOLS: Tool[] = [
         },
         limit: { type: 'number', description: 'Maximum number of notes to return (default: 20)' },
       },
+    },
+  },
+  {
+    name: 'list_scenarios',
+    description: 'List recorded reproduction scenarios and multi-step user interaction flows',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Filter scenarios by project ID or name' },
+        status: {
+          type: 'string',
+          enum: ['OPEN', 'RESOLVED'],
+          description: 'Filter by scenario status',
+        },
+        limit: { type: 'number', description: 'Maximum number of scenarios to return (default: 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_scenario',
+    description: 'Retrieve full chronological step-by-step reproduction flow with selectors, route, screenshots, and action details',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scenarioId: { type: 'string', description: 'The unique ID of the scenario / flow (e.g. scen_123)' },
+      },
+      required: ['scenarioId'],
     },
   },
   {

@@ -127,4 +127,68 @@ describe('Client Interceptors & Utilities', () => {
 
     inspector.destroy();
   });
+
+  it('should support multi-step scenario recording flow in NoteInspector', async () => {
+    const mockTransport = { send: vi.fn(), getSessionId: () => 'sess_123', onMessage: vi.fn(() => () => {}) } as any;
+    const mockDriver = { captureElement: vi.fn().mockResolvedValue({ ok: false }) } as any;
+
+    const inspector = new NoteInspector(mockTransport, mockDriver, {
+      showToolbar: true,
+    });
+
+    inspector.init();
+
+    inspector.startScenario('Checkout Journey');
+    expect((inspector as any).activeScenario).not.toBeNull();
+    expect((inspector as any).activeScenario.title).toBe('Checkout Journey');
+    expect((inspector as any).activeScenario.stepNumber).toBe(1);
+    expect((inspector as any).activeMode).toBe('element');
+
+    const fakeElement = {
+      tagName: 'BUTTON',
+      id: 'checkout-button',
+      getAttribute: () => null,
+      attributes: [],
+      classList: [],
+      getBoundingClientRect: () => ({ x: 10, y: 20, width: 100, height: 40, top: 20, left: 10, bottom: 60, right: 110 }),
+    } as any;
+
+    await inspector.saveVisualNote(fakeElement, 'Click checkout', 'element', {
+      scenarioId: (inspector as any).activeScenario.id,
+      stepNumber: 1,
+      scenarioTitle: 'Checkout Journey',
+    });
+
+    expect(mockTransport.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'create_note',
+        scenarioId: expect.any(String),
+        stepNumber: 1,
+        scenarioTitle: 'Checkout Journey',
+      })
+    );
+
+    inspector.finishScenario();
+    expect((inspector as any).activeScenario).toBeNull();
+    expect((inspector as any).activeMode).toBe('idle');
+
+    inspector.destroy();
+  });
+
+  it('should support toast notifications in NoteInspector', () => {
+    const mockTransport = { send: vi.fn(), getSessionId: () => 'sess_123', onMessage: vi.fn(() => () => {}) } as any;
+    const mockDriver = { captureElement: vi.fn() } as any;
+
+    const inspector = new NoteInspector(mockTransport, mockDriver, {
+      showToolbar: true,
+    });
+
+    inspector.init();
+    // Test showing toast without errors
+    expect(() => {
+      inspector.showToast('Test Toast Notification', '✨');
+    }).not.toThrow();
+
+    inspector.destroy();
+  });
 });

@@ -65,13 +65,26 @@ Lists visual annotations left on elements, regions, or pages during development.
 - **Arguments**:
   - `status` (`string`): `OPEN`, `IN_PROGRESS`, `VERIFYING`, `RESOLVED`, `FAILED`, `INCONCLUSIVE` (default: `OPEN`).
   - `projectId` (`string`): Filter by project ID or name.
+  - `scenarioId` (`string`): Filter notes by scenario / flow ID.
   - `limit` (`number`): Max notes (default: 20).
+
+### `list_scenarios`
+Lists multi-step user reproduction scenarios and sequential interaction flows.
+- **Arguments**:
+  - `projectId` (`string`): Filter scenarios by project ID or name.
+  - `status` (`string`): Filter by `OPEN` or `RESOLVED`.
+  - `limit` (`number`): Max scenarios (default: 20).
+
+### `get_scenario`
+Retrieves full chronological step-by-step reproduction flow with selectors, route, screenshots, and action details.
+- **Arguments**:
+  - `scenarioId` (`string`, *required*): The unique ID of the scenario / flow (e.g. `scen_checkout_123`).
 
 ### `get_note`
 Retrieves full debugging context for a visual note.
 - **Arguments**:
   - `noteId` (`string`, *required*): The unique ID of the visual note (e.g. `note_30a89599`).
-- **Returns**: Note message, route, viewport dimensions, target element selector, DOM context, screenshot file path.
+- **Returns**: Note message, route, viewport dimensions, target element selector, DOM context, screenshot file path, scenario metadata.
 
 ### `capture_note_context`
 Inspects live DOM context, bounding box, overflow, and computed styles for a target element.

@@ -27,6 +27,9 @@ export class NotesEngine {
     region?: any;
     screenshot?: string;
     incidentId?: string;
+    scenarioId?: string;
+    stepNumber?: number;
+    scenarioTitle?: string;
   }): VisualNote {
     const session = this.db.getSession(payload.sessionId);
     const projectId = session?.projectId || 'default';
@@ -56,6 +59,9 @@ export class NotesEngine {
       region: payload.region,
       status: 'OPEN',
       incidentId: payload.incidentId,
+      scenarioId: payload.scenarioId,
+      stepNumber: payload.stepNumber,
+      scenarioTitle: payload.scenarioTitle,
       screenshots: screenshotPath ? { original: screenshotPath } : undefined,
       createdAt: now,
       updatedAt: now,
