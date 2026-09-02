@@ -39,12 +39,23 @@ export interface NoteTarget {
   confidence?: 'high' | 'medium' | 'low';
 }
 
+export interface ComponentSourceInfo {
+  framework?: 'react' | 'vue' | 'svelte' | 'web-component' | 'vanilla';
+  componentName?: string;
+  sourceFile?: string;
+  sourceLine?: number;
+  sourceColumn?: number;
+  hierarchy?: string[];
+  props?: Record<string, any>;
+}
+
 export interface ElementContext {
   selector: string;
   tag: string;
   attributes?: Record<string, string>;
   outerHTML?: string;
   innerText?: string;
+  componentSource?: ComponentSourceInfo;
   parent?: {
     selector: string;
     tag: string;

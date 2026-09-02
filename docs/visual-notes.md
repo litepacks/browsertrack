@@ -64,4 +64,40 @@ The bottom-right floating toolbar gives quick access:
 - **`🎯 Element`**: Toggle element inspection mode.
 - **`📐 Region`**: Activate rectangle drag mode.
 - **`📄 Page`**: Open full-page note modal.
+- **`🎬 Flow`**: Start/finish sequential scenario recording.
 - **`📌 Notes (N)`**: Toggle visibility of all note markers on screen.
+
+---
+
+## 🙈 Hiding the Tool via Query String (Headless / Clean Mode)
+
+When running automated visual regression tests, Cypress, Playwright, or giving clean demo presentations, you can hide the visible BrowserTrack UI (dock, pins, overlays) completely using URL query parameters:
+
+### 1. Built-in Query Parameters
+Simply append any of the following to your page URL:
+- `?bt=0` or `?bt=false` or `?bt=hidden` or `?bt=off`
+- `?browsertrack=false` or `?browsertrack=0` or `?browsertrack=hidden`
+- `?no_bt` / `?no_bt=1` or `?no_browsertrack=1`
+- `?hide_bt=1` or `?hide_browsertrack=1`
+
+```text
+http://localhost:3000/dashboard?bt=false
+```
+
+### 2. Custom Query Parameter Configuration
+You can also define your own custom query parameters in client options:
+```typescript
+import { init } from 'browsertrack/client';
+
+init({
+  hideQueryParam: ['cypress', 'clean_view', 'no_ui'],
+  // or hide by default in specific environments:
+  hidden: process.env.NODE_ENV === 'test',
+});
+```
+
+When hidden:
+- The floating toolbar and on-screen note pins are not displayed.
+- Alt+Click hover highlights and selection shortcuts are inactive.
+- Background diagnostics (runtime errors, console capture, network logging, MCP command execution) continue working seamlessly in headless mode.
+- Programmatic visibility can be restored anytime via `client.setUIVisible(true)`.

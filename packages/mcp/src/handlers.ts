@@ -104,6 +104,7 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
               visible: incident.lastElement.visible,
               innerText: incident.lastElement.innerText,
               outerHTML: incident.lastElement.outerHTML,
+              componentSource: incident.lastElement.componentSource,
             }
           : undefined,
         recentBreadcrumbs: breadcrumbsTimeline,

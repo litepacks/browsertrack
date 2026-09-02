@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BreadcrumbBuffer } from '../../packages/client/src/breadcrumbs.js';
+import { shouldHideUIFromUrl } from '../../packages/client/src/config.js';
 import { setupConsoleInterceptors } from '../../packages/client/src/interceptors/console.js';
 import { NoteInspector } from '../../packages/client/src/notes/inspector.js';
 import { getSemanticSelector } from '../../packages/core/src/selector.js';
@@ -190,5 +191,60 @@ describe('Client Interceptors & Utilities', () => {
     }).not.toThrow();
 
     inspector.destroy();
+  });
+
+  it('should detect UI hide directives from various URL query strings', () => {
+    // Built-in ?bt=0, ?bt=false, ?bt=hidden, ?bt=off, ?bt=none
+    expect(shouldHideUIFromUrl(undefined, '?bt=0')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt=false')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt=hidden')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt=off')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt=none')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt=disabled')).toBe(true);
+
+    // ?browsertrack=false, ?browsertrack=0, ?browsertrack=hidden
+    expect(shouldHideUIFromUrl(undefined, '?browsertrack=false')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?browsertrack=0')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?browsertrack=hidden')).toBe(true);
+
+    // Flags: ?no_bt, ?no_browsertrack, ?hide_bt, ?hide_browsertrack
+    expect(shouldHideUIFromUrl(undefined, '?no_bt')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?no_bt=1')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?no_browsertrack')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?hide_bt=1')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?hide_browsertrack=true')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt_ui=0')).toBe(true);
+    expect(shouldHideUIFromUrl(undefined, '?bt_hide=1')).toBe(true);
+
+    // Custom query parameters
+    expect(shouldHideUIFromUrl('clean_view', '?clean_view=1')).toBe(true);
+    expect(shouldHideUIFromUrl(['e2e', 'cypress'], '?cypress=true')).toBe(true);
+
+    // Non-hide queries
+    expect(shouldHideUIFromUrl(undefined, '')).toBe(false);
+    expect(shouldHideUIFromUrl(undefined, '?user=alice&tab=profile')).toBe(false);
+    expect(shouldHideUIFromUrl(undefined, '?bt=1')).toBe(false);
+    expect(shouldHideUIFromUrl(undefined, '?bt=true')).toBe(false);
+  });
+
+  it('should support hiding and toggling visibility in NoteInspector and BrowserTrackClient', () => {
+    const mockTransport = { send: vi.fn(), getSessionId: () => 'sess_123', onMessage: vi.fn(() => () => {}) } as any;
+    const mockDriver = { captureElement: vi.fn() } as any;
+
+    const hiddenInspector = new NoteInspector(mockTransport, mockDriver, {
+      showToolbar: true,
+      hidden: true,
+    });
+
+    expect(hiddenInspector.isVisible()).toBe(false);
+
+    // Toggling visibility
+    hiddenInspector.setVisible(true);
+    expect(hiddenInspector.isVisible()).toBe(true);
+
+    hiddenInspector.setVisible(false);
+    expect(hiddenInspector.isVisible()).toBe(false);
+
+    hiddenInspector.destroy();
   });
 });

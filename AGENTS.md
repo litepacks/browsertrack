@@ -33,6 +33,7 @@ graph TD
 
 1. **Find open notes:** Call `list_notes({ status: "OPEN" })`.
 2. **Inspect note context:** Call `get_note({ noteId: "note_xxx" })`.
+   - **Check `elementContext.componentSource`**: In React, Vue, or Svelte apps, this gives you the exact component name, source file (`sourceFile`), and line number (`sourceLine`). Open that file directly!
    - Review the target selector (`target.selector`), viewport dimensions, bounding box (`boundingRect`), and screenshot path.
    - Check if layout overflow (`overflow-x`, min-width, flex wrapping) is causing the issue.
 3. **Apply the fix:** Edit the corresponding CSS, style rules, or component markup.
@@ -49,6 +50,7 @@ When an error or unexpected behavior occurs in the frontend:
 1. **List open incidents:** Call `list_incidents({ status: "OPEN" })`.
 2. **Retrieve incident details:** Call `get_incident({ incidentId: "inc_xxx" })`.
    - Inspect stack traces, exact source line/column, last user interactions, and failing network calls.
+   - **Check `lastInteractedElement.componentSource`** to see which React/Vue component and source file was clicked right before the crash.
 3. **Inspect interaction timeline (if needed):** Call `get_breadcrumbs({ incidentId: "inc_xxx" })` to see what clicks, inputs, or navigations led to the failure.
 4. **Inspect failed network requests (if needed):** Call `get_network_failures()` to examine 4xx/5xx status codes, request URLs, and response details.
 5. **Apply code fix:** Edit the source file causing the bug.

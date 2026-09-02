@@ -1,5 +1,6 @@
 import type { Breadcrumb, ElementSummary } from '../../../core/src/index.js';
 import { getSemanticSelector, truncate } from '../../../core/src/index.js';
+import { resolveComponentSource } from '../source/resolver.js';
 
 export type InteractionCallback = (breadcrumb: Breadcrumb, elementSummary?: ElementSummary) => void;
 
@@ -12,6 +13,7 @@ export function extractElementSummary(el: HTMLElement | Element): ElementSummary
   const tag = el.tagName.toLowerCase();
   const id = el.id || undefined;
   const classes = Array.from(el.classList || []);
+  const componentSource = resolveComponentSource(el as HTMLElement);
 
   let boundingRect: ElementSummary['boundingRect'] = undefined;
   let visible = true;
@@ -53,6 +55,7 @@ export function extractElementSummary(el: HTMLElement | Element): ElementSummary
     visible,
     innerText,
     outerHTML,
+    componentSource,
   };
 }
 

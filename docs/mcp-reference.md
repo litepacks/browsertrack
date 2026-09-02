@@ -24,7 +24,7 @@ Lists recorded browser runtime errors, unhandled rejections, and console errors 
 Retrieves compact, high-signal debugging context for an error incident.
 - **Arguments**:
   - `incidentId` (`string`, *required*): The unique ID of the incident (e.g. `inc_19a31a28`).
-- **Returns**: Stack trace, normalized error message, breadcrumbs timeline, failed network calls, last interacted element, error screenshot.
+- **Returns**: Stack trace, normalized error message, breadcrumbs timeline, failed network calls, last interacted element (with `componentSource`: component name, source file, line number, hierarchy), and error screenshot.
 
 ### `get_console`
 Fetches recent console logs, warnings, and errors from a browser session.
@@ -84,7 +84,7 @@ Retrieves full chronological step-by-step reproduction flow with selectors, rout
 Retrieves full debugging context for a visual note.
 - **Arguments**:
   - `noteId` (`string`, *required*): The unique ID of the visual note (e.g. `note_30a89599`).
-- **Returns**: Note message, route, viewport dimensions, target element selector, DOM context, screenshot file path, scenario metadata.
+- **Returns**: Note message, route, viewport dimensions, target element selector, DOM context (including `componentSource` with framework, component name, source file path, and line number), screenshot file path, scenario metadata.
 
 ### `capture_note_context`
 Inspects live DOM context, bounding box, overflow, and computed styles for a target element.

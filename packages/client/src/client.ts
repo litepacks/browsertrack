@@ -22,7 +22,10 @@ import { WebSocketTransport } from './transport/websocket.js';
 import { NoteInspector } from './notes/inspector.js';
 
 export class BrowserTrackClient {
-  public options: Required<Omit<BrowserDiagClientOptions, 'notes'>> & { notes: Required<NonNullable<BrowserDiagClientOptions['notes']>> };
+  public options: Required<Omit<BrowserDiagClientOptions, 'notes' | 'hideQueryParam'>> & {
+    hideQueryParam?: string | string[];
+    notes: Required<NonNullable<BrowserDiagClientOptions['notes']>>;
+  };
   private breadcrumbs: BreadcrumbBuffer;
   private transport: WebSocketTransport;
   private screenshotDriver: ScreenshotDriver;
@@ -56,6 +59,10 @@ export class BrowserTrackClient {
       this.inspector = new NoteInspector(this.transport, this.screenshotDriver, {
         shortcut: this.options.notes.shortcut,
         maskSelectors: this.options.notes.maskSelectors,
+        showToolbar: this.options.notes.showToolbar,
+        showBadges: this.options.notes.showBadges,
+        hidden: this.options.hidden,
+        hideQueryParam: this.options.hideQueryParam,
       });
     }
   }
@@ -139,6 +146,16 @@ export class BrowserTrackClient {
   public startElementSelection(): void {
     if (this.inspector) {
       this.inspector.setMode('element');
+    }
+  }
+
+  public isUIVisible(): boolean {
+    return this.inspector ? this.inspector.isVisible() : false;
+  }
+
+  public setUIVisible(visible: boolean): void {
+    if (this.inspector) {
+      this.inspector.setVisible(visible);
     }
   }
 

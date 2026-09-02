@@ -7,6 +7,7 @@ export * from './breadcrumbs.js';
 export * from './screenshot/driver.js';
 export * from './screenshot/browser-script-driver.js';
 export * from './notes/inspector.js';
+export * from './source/resolver.js';
 
 let defaultClient: BrowserTrackClient | null = null;
 
@@ -40,9 +41,11 @@ if (typeof window !== 'undefined') {
     const autoInit = currentScript?.getAttribute('data-auto-init') !== 'false';
     const daemonUrl = currentScript?.getAttribute('data-daemon-url') || undefined;
     const projectId = currentScript?.getAttribute('data-project-id') || undefined;
+    const hidden = currentScript?.getAttribute('data-hidden') === 'true';
+    const hideQueryParam = currentScript?.getAttribute('data-hide-query-param') || undefined;
 
     if (autoInit) {
-      init({ daemonUrl, projectId });
+      init({ daemonUrl, projectId, hidden, hideQueryParam });
     }
   } catch {
     // If auto-start fails, don't crash

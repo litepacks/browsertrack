@@ -2,6 +2,8 @@ import type { ElementContext, NoteTarget, RegionContext, VisualNote } from '../.
 import { getSemanticSelector, truncate } from '../../../core/src/index.js';
 import type { ScreenshotDriver } from '../screenshot/driver.js';
 import type { WebSocketTransport } from '../transport/websocket.js';
+import { shouldHideUIFromUrl } from '../config.js';
+import { resolveComponentSource } from '../source/resolver.js';
 
 export type NoteInspectMode = 'element' | 'region' | 'page' | 'idle';
 
@@ -9,6 +11,9 @@ export interface InspectorOptions {
   shortcut?: string; // e.g. "Alt+Click"
   maskSelectors?: string[];
   showToolbar?: boolean;
+  showBadges?: boolean;
+  hidden?: boolean;
+  hideQueryParam?: string | string[];
   onNoteCreated?: (note: Partial<VisualNote>) => void;
 }
 
@@ -28,6 +33,7 @@ export interface ActiveScenarioState {
  * 5. Real-time Saved Note & Step Markers (pins with step sequencing numbers)
  * 6. Interactive Note & Step Detail Card (with previous/next step walk-through navigation)
  * 7. Floating quick dock / toolbar in bottom-right corner with Notes count and Flow controls
+ * 8. Automatic invisibility via query parameter (?bt=0, ?bt=false, ?bt=hidden, ?no_bt, custom query params)
  */
 export class NoteInspector {
   private transport: WebSocketTransport;
@@ -58,15 +64,20 @@ export class NoteInspector {
 
   private savedNotes: VisualNote[] = [];
   private showMarkers = true;
+  private isHidden = false;
   private cleanups: (() => void)[] = [];
 
   constructor(transport: WebSocketTransport, screenshotDriver: ScreenshotDriver, options: InspectorOptions = {}) {
     this.transport = transport;
     this.screenshotDriver = screenshotDriver;
+    const hiddenByQuery = shouldHideUIFromUrl(options.hideQueryParam);
+    this.isHidden = options.hidden === true || hiddenByQuery;
+    this.showMarkers = options.showBadges !== false && !this.isHidden;
     this.options = {
       shortcut: 'Alt+Click',
       maskSelectors: ['input[type="password"]', '[data-sensitive]'],
       showToolbar: true,
+      showBadges: true,
       ...options,
     };
   }
@@ -158,6 +169,44 @@ export class NoteInspector {
     }
   }
 
+  public isVisible(): boolean {
+    return !this.isHidden;
+  }
+
+  public setVisible(visible: boolean): void {
+    this.isHidden = !visible;
+    this.showMarkers = this.options.showBadges !== false && !this.isHidden;
+
+    if (this.container) {
+      this.container.style.display = this.isHidden ? 'none' : 'block';
+    }
+
+    if (this.toolbarElement) {
+      this.toolbarElement.style.display = this.isHidden ? 'none' : 'flex';
+    } else if (!this.isHidden && this.options.showToolbar !== false) {
+      this.createToolbar();
+    }
+
+    if (this.isHidden) {
+      this.hideHighlight();
+      this.hideRegionOverlay();
+      if (this.modalOverlay && this.shadowRoot) {
+        this.shadowRoot.removeChild(this.modalOverlay);
+        this.modalOverlay = null;
+      }
+      if (this.cardOverlay && this.shadowRoot) {
+        this.shadowRoot.removeChild(this.cardOverlay);
+        this.cardOverlay = null;
+      }
+      if (this.markersContainer) {
+        this.markersContainer.innerHTML = '';
+      }
+    } else {
+      this.renderMarkers();
+      this.updateToolbarCount();
+    }
+  }
+
   private ensureContainer(): ShadowRoot | null {
     if (typeof document === 'undefined') return null;
 
@@ -166,6 +215,9 @@ export class NoteInspector {
       this.container.id = 'browsertrack-inspector-host';
       this.container.style.cssText =
         'all: initial; position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647; pointer-events: none;';
+      if (this.isHidden) {
+        this.container.style.display = 'none';
+      }
 
       this.shadowRoot = this.container.attachShadow({ mode: 'open' });
 
@@ -611,6 +663,22 @@ export class NoteInspector {
           color: #cbd5e1;
         }
 
+        .bt-component-pill {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(15, 23, 42, 0.95);
+          border: 1px solid rgba(99, 102, 241, 0.35);
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 11.5px;
+          color: #c7d2fe;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
         .bt-scenario-stepper {
           display: flex;
           align-items: center;
@@ -859,7 +927,7 @@ export class NoteInspector {
       this.shadowRoot.appendChild(this.toastContainer);
 
       // Floating Toolbar
-      if (this.options.showToolbar) {
+      if (this.options.showToolbar && !this.isHidden) {
         this.createToolbar();
       }
     }
@@ -978,7 +1046,7 @@ export class NoteInspector {
     if (!root || !this.markersContainer) return;
 
     this.markersContainer.innerHTML = '';
-    if (!this.showMarkers) return;
+    if (!this.showMarkers || this.isHidden) return;
 
     const currentPath = window.location.pathname;
     // Filter open notes on this route or global
@@ -1143,6 +1211,32 @@ export class NoteInspector {
 
         ${scenarioStepsHtml}
 
+        ${
+          note.elementContext?.componentSource?.componentName
+            ? `<div class="bt-component-pill" title="${
+                note.elementContext.componentSource.sourceFile
+                  ? note.elementContext.componentSource.sourceFile +
+                    (note.elementContext.componentSource.sourceLine ? ':' + note.elementContext.componentSource.sourceLine : '')
+                  : note.elementContext.componentSource.componentName
+              }">
+                <span>🧬</span>
+                <span style="font-weight: 600; color: #a5b4fc;">&lt;${note.elementContext.componentSource.componentName}&gt;</span>
+                ${
+                  note.elementContext.componentSource.sourceFile
+                    ? `<span style="color: #64748b; font-size: 11px; margin-left: 4px;">${note.elementContext.componentSource.sourceFile}${
+                        note.elementContext.componentSource.sourceLine ? ':' + note.elementContext.componentSource.sourceLine : ''
+                      }</span>`
+                    : ''
+                }
+                ${
+                  note.elementContext.componentSource.framework
+                    ? `<span class="bt-mode-badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; margin-left: auto; font-size: 10px;">${note.elementContext.componentSource.framework.toUpperCase()}</span>`
+                    : ''
+                }
+              </div>`
+            : ''
+        }
+
         <div class="bt-target-pill" title="${contextText}">
           <span>🏷️</span>
           <span class="bt-pill-content">${contextText}</span>
@@ -1249,7 +1343,7 @@ export class NoteInspector {
   private setupListeners(): void {
     // 1. Mouse move: hover highlight in element mode or with Alt key
     const onMouseMove = (e: MouseEvent) => {
-      if (this.modalOverlay || this.cardOverlay || this.isDraggingRegion || this.activeMode === 'region') return;
+      if (this.isHidden || this.modalOverlay || this.cardOverlay || this.isDraggingRegion || this.activeMode === 'region') return;
 
       // Don't highlight elements if mouse is over our own inspector UI
       const path = e.composedPath ? e.composedPath() : [];
@@ -1274,7 +1368,7 @@ export class NoteInspector {
 
     // 2. Click: Alt+Click or Element mode click selects element and opens editor
     const onClick = (e: MouseEvent) => {
-      if (this.modalOverlay || this.cardOverlay) return;
+      if (this.isHidden || this.modalOverlay || this.cardOverlay) return;
 
       // If clicking inside inspector toolbar or container, do NOT intercept
       const path = e.composedPath ? e.composedPath() : [];
@@ -1505,6 +1599,11 @@ export class NoteInspector {
       this.updateHighlight(targetEl);
     }
 
+    const comp = noteType === 'element' ? resolveComponentSource(targetEl) : undefined;
+    const compPrefix = comp?.componentName
+      ? `🧬 <${comp.componentName}>${comp.sourceFile ? ' (' + comp.sourceFile + (comp.sourceLine ? ':' + comp.sourceLine : '') + ')' : ''} · `
+      : '';
+
     this.renderNoteModal({
       title: this.activeScenario
         ? `Step ${this.activeScenario.stepNumber}: ${this.activeScenario.title}`
@@ -1513,7 +1612,7 @@ export class NoteInspector {
       pillText:
         noteType === 'page'
           ? `Page Viewport: ${window.innerWidth} × ${window.innerHeight} px`
-          : `${getSemanticSelector(targetEl)} (${Math.round(targetEl.getBoundingClientRect().width)}×${Math.round(targetEl.getBoundingClientRect().height)}) · Viewport: ${window.innerWidth}×${window.innerHeight}`,
+          : `${compPrefix}${getSemanticSelector(targetEl)} (${Math.round(targetEl.getBoundingClientRect().width)}×${Math.round(targetEl.getBoundingClientRect().height)}) · Viewport: ${window.innerWidth}×${window.innerHeight}`,
       onSave: async (message, action) => {
         let scenarioParam: { scenarioId?: string; stepNumber?: number; scenarioTitle?: string } | undefined;
 
@@ -1863,12 +1962,15 @@ export class NoteInspector {
       innerText = truncate(innerText, 200);
     }
 
+    const componentSource = resolveComponentSource(el);
+
     return {
       selector,
       tag: el.tagName.toLowerCase(),
       attributes,
       outerHTML,
       innerText,
+      componentSource,
       parent: el.parentElement
         ? {
             selector: getSemanticSelector(el.parentElement),

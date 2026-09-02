@@ -40,6 +40,7 @@ graph TD
 - [Getting Started](./getting-started.md) — Quick installation and setup in under 2 minutes.
 - [Visual Notes & Annotations](./visual-notes.md) — Screen notes, region selection, and persistent markers.
 - [Multi-Step Scenarios & Flows](./scenarios-flows.md) — Sequential reproduction flows, Save & Next Step, and stepper walk-throughs.
+- [Component & Source Resolver](./component-resolver.md) — Map live DOM elements to React Fiber, Vue VNode, Svelte, and exact source file locations.
 - [Incidents & Error Diagnostics](./incidents-diagnostics.md) — Ingest runtime errors, stack traces, and breadcrumbs.
 - [Closed-Loop Verification](./closed-loop-verification.md) — Automated bug-fix and layout verification.
 - [MCP Tool Reference](./mcp-reference.md) — Complete guide to all MCP tools.

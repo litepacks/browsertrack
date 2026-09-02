@@ -1,3 +1,5 @@
+import type { ComponentSourceInfo } from './notes.js';
+
 export type EventType =
   | 'runtime_error'
   | 'unhandled_rejection'
@@ -17,6 +19,7 @@ export interface ElementSummary {
   attributes?: Record<string, string>;
   outerHTML?: string;
   innerText?: string;
+  componentSource?: ComponentSourceInfo;
   boundingRect?: {
     x: number;
     y: number;
