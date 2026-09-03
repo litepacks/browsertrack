@@ -26,6 +26,8 @@ browsertrack start
 
 This will initialize the local server at `http://127.0.0.1:7331` (WebSocket bridge on `ws://127.0.0.1:7331`) and SQLite database at `~/.browsertrack/browsertrack.db`.
 
+> **⚡ Zero-Config Auto-Start**: If you configure BrowserTrack via MCP in your AI coding editor (Cursor, Antigravity, Claude Desktop), you do **not** need to manually run `browsertrack start`. The MCP server automatically launches and manages the HTTP and WebSocket background daemon on port `7331`!
+
 ---
 
 ## 2. Connect Your Web Application
@@ -80,25 +82,77 @@ const client = new BrowserTrackClient({
 
 Add BrowserTrack MCP server to your AI editor configuration:
 
-### Antigravity (`~/.gemini/antigravity-ide/mcp_config.json`)
-```json
-{
-  "mcpServers": {
-    "browsertrack": {
-      "command": "browsertrack",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-### Cursor (`~/.cursor/mcp.json`) & Claude Code
+### Standard Configuration
 ```json
 {
   "mcpServers": {
     "browsertrack": {
       "command": "npx",
-      "args": ["browsertrack", "mcp"]
+      "args": ["-y", "browsertrack@latest", "mcp"]
+    }
+  }
+}
+```
+
+---
+
+### ⚠️ Troubleshooting: `executable file not found in $PATH`
+
+If your editor throws an error like:
+```text
+Error: exec: "browsertrack": executable file not found in $PATH
+# or
+Error: exec: "npx": executable file not found in $PATH
+```
+
+#### Why does this happen?
+GUI applications on macOS and Linux (Antigravity, Cursor, Claude Desktop, VS Code) are launched by the desktop window manager (such as `launchd` on macOS), **not** from your terminal shell. Therefore, they do **not** automatically source your `~/.zshrc`, `~/.bashrc`, or environment managers like **NVM**, **fnm**, **asdf**, **Volta**, or **Homebrew** (`/opt/homebrew/bin`).
+
+#### Solutions:
+
+##### Option A: Use Absolute Path to `npx` with `PATH` environment (Recommended)
+Find your `npx` and `node` bin directory in your terminal:
+```bash
+which npx
+# Example output: /Users/username/.nvm/versions/node/v20.19.5/bin/npx
+```
+
+Configure your MCP config with the full path, the `-y` flag (to prevent interactive installation prompts from stalling stdio), and the `PATH` environment variable:
+```json
+{
+  "mcpServers": {
+    "browsertrack": {
+      "command": "/Users/username/.nvm/versions/node/v20.19.5/bin/npx",
+      "args": ["-y", "browsertrack@latest", "mcp"],
+      "env": {
+        "PATH": "/Users/username/.nvm/versions/node/v20.19.5/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
+##### Option B: Run Directly via Node (Fastest for Local Development)
+If you are developing or running BrowserTrack locally, bypass `npx` completely and execute the CLI entry script directly with `node`:
+```json
+{
+  "mcpServers": {
+    "browsertrack": {
+      "command": "/Users/username/.nvm/versions/node/v20.19.5/bin/node",
+      "args": ["/absolute/path/to/browsertrack/dist/cli/index.js", "mcp"]
+    }
+  }
+}
+```
+
+##### Option C: Wrap with Login Shell (`/bin/zsh -lc`)
+Use your interactive login shell to automatically source your `~/.zshrc` and all environment variables:
+```json
+{
+  "mcpServers": {
+    "browsertrack": {
+      "command": "/bin/zsh",
+      "args": ["-lc", "npx -y browsertrack mcp"]
     }
   }
 }

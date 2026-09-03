@@ -9,14 +9,18 @@ export type NavigationCallback = (event: NavigationEvent) => void;
 export function setupNavigationInterceptors(onNavigation: NavigationCallback): () => void {
   if (typeof window === 'undefined' || typeof history === 'undefined') return () => {};
 
-  let currentUrl = redactUrl(window.location.href);
-
-  // Initial navigation
-  onNavigation({
-    to: currentUrl,
-    type: 'initial',
-    timestamp: Date.now(),
-  });
+  let currentUrl = '';
+  try {
+    currentUrl = redactUrl(window.location.href);
+    // Initial navigation
+    onNavigation({
+      to: currentUrl,
+      type: 'initial',
+      timestamp: Date.now(),
+    });
+  } catch {
+    // Defensive
+  }
 
   const originalPushState = history.pushState;
   const originalReplaceState = history.replaceState;
@@ -58,27 +62,35 @@ export function setupNavigationInterceptors(onNavigation: NavigationCallback): (
   };
 
   const onPopState = () => {
-    const from = currentUrl;
-    const to = redactUrl(window.location.href);
-    currentUrl = to;
-    onNavigation({
-      from,
-      to,
-      type: 'popstate',
-      timestamp: Date.now(),
-    });
+    try {
+      const from = currentUrl;
+      const to = redactUrl(window.location.href);
+      currentUrl = to;
+      onNavigation({
+        from,
+        to,
+        type: 'popstate',
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Defensive
+    }
   };
 
   const onHashChange = () => {
-    const from = currentUrl;
-    const to = redactUrl(window.location.href);
-    currentUrl = to;
-    onNavigation({
-      from,
-      to,
-      type: 'hashchange',
-      timestamp: Date.now(),
-    });
+    try {
+      const from = currentUrl;
+      const to = redactUrl(window.location.href);
+      currentUrl = to;
+      onNavigation({
+        from,
+        to,
+        type: 'hashchange',
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Defensive
+    }
   };
 
   window.addEventListener('popstate', onPopState);

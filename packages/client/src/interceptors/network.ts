@@ -37,10 +37,29 @@ export function setupNetworkInterceptors(onNetwork: NetworkCallback): () => void
 
       const safeUrl = redactUrl(urlStr);
 
+      let response: Response;
       try {
-        const response = await originalFetch.apply(window, [input as any, init]);
+        response = await originalFetch.apply(window, [input as any, init]);
+      } catch (err: any) {
         const durationMs = Date.now() - startTime;
+        const isAbort = err?.name === 'AbortError';
 
+        try {
+          onNetwork({
+            url: safeUrl,
+            method,
+            durationMs,
+            error: err?.message || 'Network request failed',
+            aborted: isAbort,
+            timestamp: startTime,
+          });
+        } catch {}
+
+        throw err;
+      }
+
+      const durationMs = Date.now() - startTime;
+      try {
         onNetwork({
           url: safeUrl,
           method,
@@ -49,23 +68,9 @@ export function setupNetworkInterceptors(onNetwork: NetworkCallback): () => void
           durationMs,
           timestamp: startTime,
         });
+      } catch {}
 
-        return response;
-      } catch (err: any) {
-        const durationMs = Date.now() - startTime;
-        const isAbort = err?.name === 'AbortError';
-
-        onNetwork({
-          url: safeUrl,
-          method,
-          durationMs,
-          error: err?.message || 'Network request failed',
-          aborted: isAbort,
-          timestamp: startTime,
-        });
-
-        throw err;
-      }
+      return response;
     };
 
     cleanups.push(() => {

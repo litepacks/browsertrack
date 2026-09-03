@@ -35,8 +35,11 @@ browsertrack clear             # Wipe stored logs, screenshots, and incidents
 
 ### MCP Integration
 ```bash
-browsertrack mcp               # Start Model Context Protocol server over stdio
+browsertrack mcp               # Start Model Context Protocol server over stdio (auto-boots singleton daemon if offline)
+browsertrack mcp --no-daemon   # Start MCP server without auto-booting background daemon
 ```
+
+> **⚡ Singleton Daemon Lifecycle**: When starting `browsertrack mcp`, BrowserTrack automatically checks if the daemon is already running. If offline, it starts a single, persistent background daemon on `http://127.0.0.1:7331`. All IDE windows, workspaces, and sub-sessions share this single daemon without spawning duplicates or conflicting on ports.
 
 ---
 

@@ -76,7 +76,9 @@ function resolveReactComponent(el: HTMLElement): ComponentSourceInfo | undefined
 
     // Walk up fiber return tree to discover composite components and hierarchy
     let curr = hostFiber;
-    while (curr) {
+    let depth = 0;
+    while (curr && depth < 50) {
+      depth++;
       const type = curr.type;
       const name = getReactComponentName(type);
 
@@ -146,7 +148,9 @@ function resolveVueComponent(el: HTMLElement): ComponentSourceInfo | undefined {
       const hierarchy: string[] = [];
 
       let curr = vueParent;
-      while (curr) {
+      let depth = 0;
+      while (curr && depth < 50) {
+        depth++;
         const cType = curr.type || {};
         const cName = cType.name || cType.__name || cType.displayName;
         if (cName && !hierarchy.includes(cName)) {
@@ -192,7 +196,9 @@ function resolveVueComponent(el: HTMLElement): ComponentSourceInfo | undefined {
 function resolveSvelteComponent(el: HTMLElement): ComponentSourceInfo | undefined {
   try {
     let curr: HTMLElement | null = el;
-    while (curr) {
+    let depth = 0;
+    while (curr && depth < 50) {
+      depth++;
       const meta = (curr as any).__svelte_meta;
       if (meta && meta.loc) {
         return {

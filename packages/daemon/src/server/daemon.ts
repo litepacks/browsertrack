@@ -40,7 +40,13 @@ export class BrowserTrackDaemon {
   public async start(): Promise<void> {
     if (this.isRunning) return;
 
-    const httpHandler = createHttpHandler(this.db, this.sessionManager, this.config.screenshotsDir);
+    const httpHandler = createHttpHandler(
+      this.db,
+      this.sessionManager,
+      this.config.screenshotsDir,
+      this.verificationEngine,
+      this.noteVerificationEngine
+    );
     this.httpServer = http.createServer(httpHandler);
 
     this.wss = new WebSocketServer({ server: this.httpServer });

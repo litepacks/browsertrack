@@ -1050,9 +1050,16 @@ export class NoteInspector {
 
     const currentPath = window.location.pathname;
     // Filter open notes on this route or global
-    const activeNotes = this.savedNotes.filter(
-      (n) => n.status === 'OPEN' && (n.route === currentPath || !n.route || n.route === '/' || window.location.href.includes(n.route))
-    );
+    const activeNotes = this.savedNotes.filter((n) => {
+      if (n.status !== 'OPEN') return false;
+      if (!n.route) return true;
+      if (n.route === currentPath) return true;
+      // Support hash or query routes (e.g. /#modal or /?tab=settings)
+      if (n.route.includes('#') || n.route.includes('?')) {
+        return window.location.href.includes(n.route);
+      }
+      return false;
+    });
 
     const pageNotes: VisualNote[] = [];
 
@@ -1343,81 +1350,103 @@ export class NoteInspector {
   private setupListeners(): void {
     // 1. Mouse move: hover highlight in element mode or with Alt key
     const onMouseMove = (e: MouseEvent) => {
-      if (this.isHidden || this.modalOverlay || this.cardOverlay || this.isDraggingRegion || this.activeMode === 'region') return;
+      try {
+        if (this.isHidden || this.modalOverlay || this.cardOverlay || this.isDraggingRegion || this.activeMode === 'region') return;
 
-      // Don't highlight elements if mouse is over our own inspector UI
-      const path = e.composedPath ? e.composedPath() : [];
-      if (this.container && path.includes(this.container)) {
-        this.hideHighlight();
-        return;
-      }
-
-      if (e.altKey || this.activeMode === 'element') {
-        const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-        if (target && target !== this.container && !this.container?.contains(target)) {
-          this.hoveredElement = target;
-          this.updateHighlight(target);
+        // Don't highlight elements if mouse is over our own inspector UI
+        const path = e.composedPath ? e.composedPath() : [];
+        if (this.container && path.includes(this.container)) {
+          this.hideHighlight();
           return;
         }
-      }
 
-      if (!e.altKey && this.activeMode !== 'element') {
-        this.hideHighlight();
+        if (e.altKey || this.activeMode === 'element') {
+          const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+          if (target && target !== this.container && !this.container?.contains(target)) {
+            this.hoveredElement = target;
+            this.updateHighlight(target);
+            return;
+          }
+        }
+
+        if (!e.altKey && this.activeMode !== 'element') {
+          this.hideHighlight();
+        }
+      } catch {
+        // Defensive: never let inspector hover crash host app
       }
     };
 
     // 2. Click: Alt+Click or Element mode click selects element and opens editor
     const onClick = (e: MouseEvent) => {
-      if (this.isHidden || this.modalOverlay || this.cardOverlay) return;
+      try {
+        if (this.isHidden || this.modalOverlay || this.cardOverlay) return;
 
-      // If clicking inside inspector toolbar or container, do NOT intercept
-      const path = e.composedPath ? e.composedPath() : [];
-      if (this.container && path.includes(this.container)) {
-        return;
-      }
+        // If clicking inside inspector toolbar or container, do NOT intercept
+        const path = e.composedPath ? e.composedPath() : [];
+        if (this.container && path.includes(this.container)) {
+          return;
+        }
 
-      if (this.activeMode === 'region') return;
+        if (this.activeMode === 'region') return;
 
-      if (e.altKey || this.activeMode === 'element') {
-        e.preventDefault();
-        e.stopPropagation();
+        if (e.altKey || this.activeMode === 'element') {
+          e.preventDefault();
+          e.stopPropagation();
 
-        const target = (this.hoveredElement || document.elementFromPoint(e.clientX, e.clientY)) as HTMLElement | null;
-        if (target && target !== this.container && !this.container?.contains(target)) {
-          this.selectedElement = target;
-          this.openNoteEditor(target, 'element');
-          if (this.activeMode === 'element' && !this.activeScenario) {
-            this.setMode('idle');
+          const target = (this.hoveredElement || document.elementFromPoint(e.clientX, e.clientY)) as HTMLElement | null;
+          if (target && target !== this.container && !this.container?.contains(target)) {
+            this.selectedElement = target;
+            this.openNoteEditor(target, 'element');
+            if (this.activeMode === 'element' && !this.activeScenario) {
+              this.setMode('idle');
+            }
           }
         }
+      } catch {
+        // Defensive
       }
     };
 
     // 3. Key handling: Escape cancels active modes, Alt release hides highlight
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (this.cardOverlay && this.cardOverlay.parentElement && this.shadowRoot) {
-          this.shadowRoot.removeChild(this.cardOverlay);
-          this.cardOverlay = null;
-        } else if (this.activeMode === 'region' || this.activeMode === 'element') {
-          if (!this.activeScenario) {
-            this.setMode('idle');
+      try {
+        if (e.key === 'Escape') {
+          if (this.cardOverlay && this.cardOverlay.parentElement && this.shadowRoot) {
+            this.shadowRoot.removeChild(this.cardOverlay);
+            this.cardOverlay = null;
+          } else if (this.activeMode === 'region' || this.activeMode === 'element') {
+            if (!this.activeScenario) {
+              this.setMode('idle');
+            }
           }
         }
+      } catch {
+        // Defensive
       }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt' && !this.modalOverlay && !this.cardOverlay && this.activeMode !== 'element') {
-        this.hideHighlight();
+      try {
+        if (e.key === 'Alt' && !this.modalOverlay && !this.cardOverlay && this.activeMode !== 'element') {
+          this.hideHighlight();
+        }
+      } catch {
+        // Defensive
       }
     };
 
     // 4. Scroll & resize: reposition markers accurately
     const onScrollOrResize = () => {
-      requestAnimationFrame(() => {
-        this.updateMarkerPositions();
-      });
+      try {
+        requestAnimationFrame(() => {
+          try {
+            this.updateMarkerPositions();
+          } catch {}
+        });
+      } catch {
+        // Defensive
+      }
     };
 
     window.addEventListener('mousemove', onMouseMove, { capture: true, passive: true });
@@ -2005,7 +2034,11 @@ export class NoteInspector {
           region.width,
           region.height
         );
-        resolve(canvas.toDataURL('image/png'));
+        try {
+          resolve(canvas.toDataURL('image/png'));
+        } catch {
+          resolve(dataUrl);
+        }
       };
       img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;

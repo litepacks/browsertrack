@@ -4,11 +4,59 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { StorageDB } from '../storage/db.js';
 import type { SessionManager } from '../session/manager.js';
+import type { VerificationEngine } from '../verification/engine.js';
+import type { NoteVerificationEngine } from '../notes/verification.js';
 
-export function createHttpHandler(db: StorageDB, sessionManager: SessionManager, baseScreenshotsDir: string) {
-  return (req: http.IncomingMessage, res: http.ServerResponse) => {
-    const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-    const pathname = parsedUrl.pathname;
+function readJsonBody(req: http.IncomingMessage, res: http.ServerResponse, maxSizeBytes = 10 * 1024 * 1024): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let isTooLarge = false;
+
+    req.on('data', (chunk) => {
+      if (isTooLarge) return;
+      body += chunk;
+      if (body.length > maxSizeBytes) {
+        isTooLarge = true;
+        if (!res.headersSent) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Payload too large' }));
+        }
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+
+    req.on('end', () => {
+      if (isTooLarge) return;
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        resolve(parsed);
+      } catch (err: any) {
+        if (!res.headersSent) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Malformed JSON payload' }));
+        }
+        reject(err);
+      }
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+export function createHttpHandler(
+  db: StorageDB,
+  sessionManager: SessionManager,
+  baseScreenshotsDir: string,
+  verificationEngine?: VerificationEngine,
+  noteVerificationEngine?: NoteVerificationEngine
+) {
+  return async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    try {
+      const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+      const pathname = parsedUrl.pathname;
 
     // CORS headers for local development access
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -158,8 +206,80 @@ export function createHttpHandler(db: StorageDB, sessionManager: SessionManager,
       return;
     }
 
+    // 10. API - Dispatch Live Command to Browser Session
+    if (pathname === '/api/command' && req.method === 'POST') {
+      try {
+        const data = await readJsonBody(req, res);
+        const sessionId = data.sessionId || sessionManager.getAnyActiveSession()?.id;
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'No active browser session connected' }));
+          return;
+        }
+        const cmdRes = await sessionManager.sendCommand(sessionId, data.command, data.timeoutMs || 5000);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(cmdRes));
+      } catch (err: any) {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+        }
+      }
+      return;
+    }
+
+    // 11. API - Verify Incident
+    if (pathname === '/api/verify/incident' && req.method === 'POST') {
+      try {
+        if (!verificationEngine) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Verification engine not attached to daemon' }));
+          return;
+        }
+        const data = await readJsonBody(req, res);
+        const result = await verificationEngine.verifyIncident(data.incidentId, data.options);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result }));
+      } catch (err: any) {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+        }
+      }
+      return;
+    }
+
+    // 12. API - Verify Note
+    if (pathname === '/api/verify/note' && req.method === 'POST') {
+      try {
+        if (!noteVerificationEngine) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Note verification engine not attached to daemon' }));
+          return;
+        }
+        const data = await readJsonBody(req, res);
+        const result = await noteVerificationEngine.verifyNote(data.noteId, data.options);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, result }));
+      } catch (err: any) {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+        }
+      }
+      return;
+    }
+
     // Not found
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Not found' }));
-  };
+  } catch (err: any) {
+    if (!res.headersSent) {
+      try {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err?.message || 'Internal Server Error' }));
+      } catch {}
+    }
+  }
+};
 }

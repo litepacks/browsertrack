@@ -99,10 +99,9 @@ When an error or unexpected behavior occurs in the frontend:
 
 If BrowserTrack is not yet active in your project:
 
-### 1. Ensure Daemon is Running
-```bash
-browsertrack start
-```
+### 1. Zero-Config Daemon Auto-Boot (Singleton Daemon)
+You do **not** need to manually run `browsertrack start`! When your IDE connects to BrowserTrack via MCP (`browsertrack mcp`), the background HTTP/WebSocket server is launched **automatically** on `http://127.0.0.1:7331` as a **singleton daemon**. Multiple windows, workspaces, or sub-agent sessions seamlessly share this single daemon without spawning duplicates or conflicting on ports.
+*(You can still manually run `browsertrack start` or `browsertrack stop` if you want a standalone terminal process).*
 
 ### 2. Connect the Browser Client
 - **Via HTML script tag:**
@@ -116,16 +115,20 @@ browsertrack start
 
 ### 3. MCP Configuration
 Ensure BrowserTrack MCP is configured in your editor:
+
 ```json
 {
   "mcpServers": {
     "browsertrack": {
-      "command": "browsertrack",
-      "args": ["mcp"]
+      "command": "npx",
+      "args": ["-y", "browsertrack@latest", "mcp"]
     }
   }
 }
 ```
+
+> **Note on PATH errors (`executable file not found in $PATH`):**
+> If your IDE cannot find `npx` or `browsertrack` in `$PATH` (common in GUI apps on macOS using NVM or Homebrew), provide the absolute path to `npx` (e.g. `~/.nvm/versions/node/v20.x.x/bin/npx`) along with `PATH` in the `env` object.
 
 ---
 

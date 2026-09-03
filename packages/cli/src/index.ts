@@ -4,7 +4,16 @@ import path from 'node:path';
 import { getDaemonConfig } from '../../daemon/src/config.js';
 import { createDaemon } from '../../daemon/src/index.js';
 import { StorageDB } from '../../daemon/src/storage/db.js';
-import { createMcpServer } from '../../mcp/src/server.js';
+import { createMcpServer, isDaemonRunning } from '../../mcp/src/server.js';
+
+// Global process safety handlers to prevent fatal crashes
+process.on('uncaughtException', (err: any) => {
+  console.error('[BrowserTrack] Uncaught Exception:', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[BrowserTrack] Unhandled Rejection:', reason?.message || reason);
+});
 
 const program = new Command();
 program.name('browsertrack').description('Local browser diagnostics + MCP bridge for coding agents').version('0.1.0');
@@ -65,6 +74,11 @@ program
     }
 
     const port = parseInt(options.port, 10);
+    const isRunningHttp = await isDaemonRunning(options.host, port);
+    if (isRunningHttp) {
+      console.log(`[BrowserTrack] Daemon is already running on http://${options.host}:${port} (active via MCP Server).`);
+      return;
+    }
     const daemon = createDaemon({
       port,
       host: options.host,
@@ -120,6 +134,13 @@ program
   .action(async () => {
     const pid = readPid();
     if (!pid || !isProcessRunning(pid)) {
+      const config = getDaemonConfig();
+      const isRunningHttp = await isDaemonRunning(config.host, config.port);
+      if (isRunningHttp) {
+        console.log('[BrowserTrack] Daemon is actively maintained by an MCP Server process in your IDE and will shut down when your editor session ends.');
+        removePid();
+        return;
+      }
       console.log('[BrowserTrack] Daemon is not currently running.');
       removePid();
       return;
@@ -140,11 +161,20 @@ program
   .description('Check if the BrowserTrack daemon is running and view active sessions')
   .action(async () => {
     const pid = readPid();
-    const isRunning = pid ? isProcessRunning(pid) : false;
     const config = getDaemonConfig();
+    let isRunning = pid ? isProcessRunning(pid) : false;
+    let detail = isRunning ? ` (PID: ${pid})` : '';
+
+    if (!isRunning) {
+      const isRunningHttp = await isDaemonRunning(config.host, config.port);
+      if (isRunningHttp) {
+        isRunning = true;
+        detail = ' (Active via MCP Server)';
+      }
+    }
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`  Status:       ${isRunning ? '🟢 RUNNING' : '⚪ STOPPED'}${isRunning ? ` (PID: ${pid})` : ''}`);
+    console.log(`  Status:       ${isRunning ? '🟢 RUNNING' : '⚪ STOPPED'}${detail}`);
     console.log(`  Endpoint:     http://${config.host}:${config.port}`);
     console.log(`  Database:     ${config.dbPath}`);
 
@@ -174,42 +204,54 @@ projectCommand
   .requiredOption('-o, --origin <origin>', 'Project origin (e.g. http://localhost:5173)')
   .option('-p, --path <path>', 'Filesystem path (e.g. /path/to/project)')
   .action((name, options) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const resolvedPath = options.path ? path.resolve(options.path) : undefined;
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const resolvedPath = options.path ? path.resolve(options.path) : undefined;
+        const proj = db.upsertProject({
+          id: `proj_${name}`,
+          name,
+          origin: options.origin,
+          path: resolvedPath,
+        });
 
-    const proj = db.upsertProject({
-      id: `proj_${name}`,
-      name,
-      origin: options.origin,
-      path: resolvedPath,
-    });
-
-    console.log(`[BrowserTrack] Registered project '${proj.name}':`);
-    console.log(`  ID:     ${proj.id}`);
-    console.log(`  Origin: ${proj.origin}`);
-    console.log(`  Path:   ${proj.path || '(none)'}`);
-    db.close();
+        console.log(`[BrowserTrack] Registered project '${proj.name}':`);
+        console.log(`  ID:     ${proj.id}`);
+        console.log(`  Origin: ${proj.origin}`);
+        console.log(`  Path:   ${proj.path || '(none)'}`);
+      } finally {
+        db.close();
+      }
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to register project:', err?.message || err);
+    }
   });
 
 program
   .command('projects')
   .description('List all tracked projects')
   .action(() => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const projects = db.listProjects();
-
-    if (projects.length === 0) {
-      console.log('[BrowserTrack] No projects registered yet. Projects will be auto-detected upon browser connection.');
-    } else {
-      console.log('\nTracked Projects:');
-      for (const p of projects) {
-        console.log(`  • ${p.name.padEnd(16)} | ${p.origin.padEnd(26)} | ${p.path || '(auto-detected)'}`);
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const projects = db.listProjects();
+        if (projects.length === 0) {
+          console.log('[BrowserTrack] No projects registered yet. Projects will be auto-detected upon browser connection.');
+        } else {
+          console.log('\nTracked Projects:');
+          for (const p of projects) {
+            console.log(`  • ${p.name.padEnd(16)} | ${p.origin.padEnd(26)} | ${p.path || '(auto-detected)'}`);
+          }
+          console.log('');
+        }
+      } finally {
+        db.close();
       }
-      console.log('');
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to list projects:', err?.message || err);
     }
-    db.close();
   });
 
 // 5. ERRORS / INCIDENTS
@@ -220,34 +262,41 @@ program
   .option('-s, --status <status>', 'Filter by status (OPEN, VERIFIED, FAILED, etc.)')
   .option('-l, --limit <number>', 'Limit result count', '20')
   .action((options) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const limit = parseInt(options.limit, 10);
-    const incidents = db.listIncidents({
-      projectId: options.project,
-      status: options.status,
-      limit,
-    });
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const limit = parseInt(options.limit, 10);
+        const incidents = db.listIncidents({
+          projectId: options.project,
+          status: options.status,
+          limit,
+        });
 
-    if (incidents.length === 0) {
-      console.log('[BrowserTrack] No incidents found matching the filter.');
-    } else {
-      console.log(`\nIncidents (${incidents.length}):`);
-      for (const inc of incidents) {
-        const statusBadge =
-          inc.status === 'OPEN'
-            ? '🔴 OPEN'
-            : inc.status === 'VERIFIED'
-              ? '🟢 VERIFIED'
-              : inc.status === 'FAILED'
-                ? '❌ FAILED'
-                : `⚪ ${inc.status}`;
-        console.log(`  ${inc.id.padEnd(12)} [${statusBadge}] (${inc.occurrences}x) ${inc.type}: ${inc.message}`);
-        console.log(`    Source: ${inc.source.file}:${inc.source.line} | Route: ${inc.route}`);
+        if (incidents.length === 0) {
+          console.log('[BrowserTrack] No incidents found matching the filter.');
+        } else {
+          console.log(`\nIncidents (${incidents.length}):`);
+          for (const inc of incidents) {
+            const statusBadge =
+              inc.status === 'OPEN'
+                ? '🔴 OPEN'
+                : inc.status === 'VERIFIED'
+                  ? '🟢 VERIFIED'
+                  : inc.status === 'FAILED'
+                    ? '❌ FAILED'
+                    : `⚪ ${inc.status}`;
+            console.log(`  ${inc.id.padEnd(12)} [${statusBadge}] (${inc.occurrences}x) ${inc.type}: ${inc.message}`);
+            console.log(`    Source: ${inc.source.file}:${inc.source.line} | Route: ${inc.route}`);
+          }
+          console.log('');
+        }
+      } finally {
+        db.close();
       }
-      console.log('');
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to list incidents:', err?.message || err);
     }
-    db.close();
   });
 
 // 6. VISUAL NOTES
@@ -257,63 +306,81 @@ noteCmd
   .command('show <noteId>')
   .description('Show full context for a specific visual note')
   .action((noteId) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const note = db.getNote(noteId);
-
-    if (!note) {
-      console.log(`[BrowserTrack] Note '${noteId}' not found.`);
-    } else {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`  📝 Visual Note: ${note.id} [${note.status}]`);
-      console.log(`  📍 Route:       ${note.route} (${note.url})`);
-      console.log(`  📐 Viewport:    ${note.viewport.width} × ${note.viewport.height} (dpr: ${note.viewport.devicePixelRatio})`);
-      if (note.target) {
-        console.log(`  🎯 Target:      ${note.target.selector}`);
-        console.log(`     Bounds:      x:${note.target.boundingRect.x}, y:${note.target.boundingRect.y}, ${note.target.boundingRect.width}×${note.target.boundingRect.height}`);
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const note = db.getNote(noteId);
+        if (!note) {
+          console.log(`[BrowserTrack] Note '${noteId}' not found.`);
+        } else {
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log(`  📝 Visual Note: ${note.id} [${note.status}]`);
+          console.log(`  📍 Route:       ${note.route} (${note.url})`);
+          console.log(`  📐 Viewport:    ${note.viewport.width} × ${note.viewport.height} (dpr: ${note.viewport.devicePixelRatio})`);
+          if (note.target) {
+            console.log(`  🎯 Target:      ${note.target.selector}`);
+            console.log(`     Bounds:      x:${note.target.boundingRect.x}, y:${note.target.boundingRect.y}, ${note.target.boundingRect.width}×${note.target.boundingRect.height}`);
+          }
+          console.log(`  💬 Note:        "${note.message}"`);
+          if (note.screenshots?.original) {
+            console.log(`  🖼️  Screenshot:  ${note.screenshots.original}`);
+          }
+          console.log(`  🕒 Created:     ${note.createdAt}`);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        }
+      } finally {
+        db.close();
       }
-      console.log(`  💬 Note:        "${note.message}"`);
-      if (note.screenshots?.original) {
-        console.log(`  🖼️  Screenshot:  ${note.screenshots.original}`);
-      }
-      console.log(`  🕒 Created:     ${note.createdAt}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to retrieve note:', err?.message || err);
     }
-    db.close();
   });
 
 noteCmd
   .command('resolve <noteId>')
   .description('Mark a visual note as resolved')
   .action((noteId) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const note = db.getNote(noteId);
-
-    if (!note) {
-      console.log(`[BrowserTrack] Note '${noteId}' not found.`);
-    } else {
-      db.updateNoteStatus(noteId, 'RESOLVED');
-      console.log(`[BrowserTrack] Marked note '${noteId}' as RESOLVED.`);
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const note = db.getNote(noteId);
+        if (!note) {
+          console.log(`[BrowserTrack] Note '${noteId}' not found.`);
+        } else {
+          db.updateNoteStatus(noteId, 'RESOLVED');
+          console.log(`[BrowserTrack] Marked note '${noteId}' as RESOLVED.`);
+        }
+      } finally {
+        db.close();
+      }
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to resolve note:', err?.message || err);
     }
-    db.close();
   });
 
 noteCmd
   .command('reopen <noteId>')
   .description('Reopen a visual note')
   .action((noteId) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const note = db.getNote(noteId);
-
-    if (!note) {
-      console.log(`[BrowserTrack] Note '${noteId}' not found.`);
-    } else {
-      db.updateNoteStatus(noteId, 'OPEN');
-      console.log(`[BrowserTrack] Reopened note '${noteId}' (status: OPEN).`);
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const note = db.getNote(noteId);
+        if (!note) {
+          console.log(`[BrowserTrack] Note '${noteId}' not found.`);
+        } else {
+          db.updateNoteStatus(noteId, 'OPEN');
+          console.log(`[BrowserTrack] Reopened note '${noteId}' (status: OPEN).`);
+        }
+      } finally {
+        db.close();
+      }
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to reopen note:', err?.message || err);
     }
-    db.close();
   });
 
 program
@@ -323,27 +390,34 @@ program
   .option('-s, --status <status>', 'Filter by status (OPEN, RESOLVED, etc.)')
   .option('-l, --limit <number>', 'Limit result count', '20')
   .action((options) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const limit = parseInt(options.limit, 10);
-    const notes = db.listNotes({
-      projectId: options.project,
-      status: options.status,
-      limit,
-    });
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const limit = parseInt(options.limit, 10);
+        const notes = db.listNotes({
+          projectId: options.project,
+          status: options.status,
+          limit,
+        });
 
-    if (notes.length === 0) {
-      console.log('[BrowserTrack] No visual notes found.');
-    } else {
-      console.log(`\nVisual Notes (${notes.length}):`);
-      for (const n of notes) {
-        const badge = n.status === 'OPEN' ? '🟡 OPEN' : n.status === 'RESOLVED' ? '🟢 RESOLVED' : `⚪ ${n.status}`;
-        console.log(`  ${n.id.padEnd(12)} [${badge}] Route: ${n.route.padEnd(16)} | Target: ${n.target?.selector || n.type}`);
-        console.log(`    Note: "${n.message}" (${n.viewport.width}×${n.viewport.height})`);
+        if (notes.length === 0) {
+          console.log('[BrowserTrack] No visual notes found.');
+        } else {
+          console.log(`\nVisual Notes (${notes.length}):`);
+          for (const n of notes) {
+            const badge = n.status === 'OPEN' ? '🟡 OPEN' : n.status === 'RESOLVED' ? '🟢 RESOLVED' : `⚪ ${n.status}`;
+            console.log(`  ${n.id.padEnd(12)} [${badge}] Route: ${n.route.padEnd(16)} | Target: ${n.target?.selector || n.type}`);
+            console.log(`    Note: "${n.message}" (${n.viewport.width}×${n.viewport.height})`);
+          }
+          console.log('');
+        }
+      } finally {
+        db.close();
       }
-      console.log('');
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to list visual notes:', err?.message || err);
     }
-    db.close();
   });
 
 // 7. INBOX (Errors + Visual Notes)
@@ -352,36 +426,43 @@ program
   .description('View combined developer inbox with active runtime errors and visual notes')
   .option('-p, --project <project>', 'Filter by project name or ID')
   .action((options) => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    const incidents = db.listIncidents({ projectId: options.project, status: 'OPEN', limit: 20 });
-    const notes = db.listNotes({ projectId: options.project, status: 'OPEN', limit: 20 });
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        const incidents = db.listIncidents({ projectId: options.project, status: 'OPEN', limit: 20 });
+        const notes = db.listNotes({ projectId: options.project, status: 'OPEN', limit: 20 });
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`  📥 Browser Development Inbox ${options.project ? `(${options.project})` : ''}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`  📥 Browser Development Inbox ${options.project ? `(${options.project})` : ''}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (incidents.length === 0 && notes.length === 0) {
-      console.log('  ✨ All clear! No open errors or visual notes.');
-    } else {
-      if (incidents.length > 0) {
-        console.log(`\n  🚨 Runtime Errors (${incidents.length}):`);
-        for (const inc of incidents) {
-          console.log(`    • ${inc.id} (${inc.occurrences}x) ${inc.type}: ${inc.message}`);
-          console.log(`      Route: ${inc.route} | Source: ${inc.source.file}:${inc.source.line}`);
+        if (incidents.length === 0 && notes.length === 0) {
+          console.log('  ✨ All clear! No open errors or visual notes.');
+        } else {
+          if (incidents.length > 0) {
+            console.log(`\n  🚨 Runtime Errors (${incidents.length}):`);
+            for (const inc of incidents) {
+              console.log(`    • ${inc.id} (${inc.occurrences}x) ${inc.type}: ${inc.message}`);
+              console.log(`      Route: ${inc.route} | Source: ${inc.source.file}:${inc.source.line}`);
+            }
+          }
+
+          if (notes.length > 0) {
+            console.log(`\n  📝 Visual Notes (${notes.length}):`);
+            for (const n of notes) {
+              console.log(`    • ${n.id} on ${n.route} (${n.viewport.width}×${n.viewport.height})`);
+              console.log(`      Target: ${n.target?.selector || n.type} | Note: "${n.message}"`);
+            }
+          }
         }
+        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      } finally {
+        db.close();
       }
-
-      if (notes.length > 0) {
-        console.log(`\n  📝 Visual Notes (${notes.length}):`);
-        for (const n of notes) {
-          console.log(`    • ${n.id} on ${n.route} (${n.viewport.width}×${n.viewport.height})`);
-          console.log(`      Target: ${n.target?.selector || n.type} | Note: "${n.message}"`);
-        }
-      }
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to display inbox:', err?.message || err);
     }
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    db.close();
   });
 
 // 6. CLEAR
@@ -389,20 +470,35 @@ program
   .command('clear')
   .description('Clear all stored incidents, events, and sessions from the database')
   .action(() => {
-    const config = getDaemonConfig();
-    const db = new StorageDB(config.dbPath);
-    db.clearAll();
-    console.log('[BrowserTrack] Database cleared.');
-    db.close();
+    try {
+      const config = getDaemonConfig();
+      const db = new StorageDB(config.dbPath);
+      try {
+        db.clearAll();
+        console.log('[BrowserTrack] Database cleared.');
+      } finally {
+        db.close();
+      }
+    } catch (err: any) {
+      console.error('[BrowserTrack] Failed to clear database:', err?.message || err);
+    }
   });
 
 // 7. MCP SERVER
 program
   .command('mcp')
   .description('Launch the Model Context Protocol (MCP) server over stdio')
-  .action(async () => {
+  .option('--no-daemon', 'Do not auto-start background daemon if offline')
+  .action(async (options) => {
     try {
-      const server = createMcpServer();
+      // In MCP stdio mode, redirect console.log to console.error to preserve JSON-RPC protocol on stdout
+      console.log = (...args: any[]) => {
+        console.error(...args);
+      };
+
+      const server = createMcpServer({
+        autoStartDaemon: options.daemon !== false,
+      });
       await server.startStdio();
     } catch (err: any) {
       console.error('[BrowserTrack] MCP Server error:', err?.message);

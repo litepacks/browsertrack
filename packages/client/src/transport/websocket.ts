@@ -1,4 +1,5 @@
 import type { HelloMessage, ClientCommand, CommandResponse } from '../../../core/src/index.js';
+import { safeJsonStringify } from '../../../core/src/index.js';
 import type { ClientCommandHandler } from '../commands/handler.js';
 
 export interface TransportOptions {
@@ -111,15 +112,19 @@ export class WebSocketTransport {
   }
 
   public send(payload: any): void {
-    const raw = JSON.stringify(payload);
-    if (this.isConnected()) {
-      try {
-        this.ws!.send(raw);
-      } catch {
+    try {
+      const raw = safeJsonStringify(payload);
+      if (this.isConnected()) {
+        try {
+          this.ws!.send(raw);
+        } catch {
+          this.enqueue(raw);
+        }
+      } else {
         this.enqueue(raw);
       }
-    } else {
-      this.enqueue(raw);
+    } catch {
+      // Defensive: never let payload serialization crash caller
     }
   }
 
@@ -148,18 +153,18 @@ export class WebSocketTransport {
   private sendHello(): void {
     if (typeof window === 'undefined') return;
 
-    const hello: HelloMessage = {
-      type: 'hello',
-      origin: window.location.origin,
-      url: window.location.href,
-      title: document.title,
-      userAgent: navigator.userAgent,
-      timestamp: Date.now(),
-      projectId: this.projectId,
-    };
-
     try {
-      this.ws!.send(JSON.stringify(hello));
+      const hello: HelloMessage = {
+        type: 'hello',
+        origin: window.location.origin,
+        url: window.location.href,
+        title: document.title,
+        userAgent: navigator.userAgent,
+        timestamp: Date.now(),
+        projectId: this.projectId,
+      };
+
+      this.ws!.send(safeJsonStringify(hello));
     } catch {
       // Defensive
     }

@@ -11,6 +11,113 @@ export interface McpContext {
   daemonUrl?: string;
 }
 
+async function sendSessionCommand(ctx: McpContext, sessionId: string | undefined, command: any, timeoutMs = 5000): Promise<any> {
+  // 1. In-process session manager (if active sockets exist)
+  if (ctx.sessionManager && ctx.sessionManager.getActiveCount() > 0) {
+    const targetSession = sessionId ? ctx.db.getSession(sessionId) : ctx.sessionManager.getAnyActiveSession();
+    if (targetSession) {
+      const res = await ctx.sessionManager.sendCommand(targetSession.id, command, timeoutMs);
+      if (!res.ok) {
+        throw new Error(res.error || res.reason || `Command ${command.type} failed`);
+      }
+      return res;
+    }
+  }
+
+  // 2. Multi-process proxy to running daemon HTTP server
+  if (ctx.daemonUrl) {
+    try {
+      const resp = await fetch(`${ctx.daemonUrl}/api/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, command, timeoutMs }),
+        signal: AbortSignal.timeout(timeoutMs + 2000),
+      });
+      if (resp.ok) {
+        const res = await resp.json();
+        if (!res.ok) {
+          throw new Error(res.error || res.reason || `Command ${command.type} failed`);
+        }
+        return res;
+      }
+      const errJson = await resp.json().catch(() => ({}));
+      if (errJson.error) {
+        throw new Error(errJson.error);
+      }
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch failed') && !err.message.includes('ECONNREFUSED')) {
+        throw err;
+      }
+    }
+  }
+
+  throw new Error(
+    'No active browser session connected. Please ensure the BrowserTrack daemon is running ("browsertrack start") and your application tab is open in the browser.'
+  );
+}
+
+async function runVerifyIncident(ctx: McpContext, incidentId: string, options: any): Promise<any> {
+  if (ctx.verificationEngine && ctx.sessionManager && ctx.sessionManager.getActiveCount() > 0) {
+    return await ctx.verificationEngine.verifyIncident(incidentId, options);
+  }
+
+  if (ctx.daemonUrl) {
+    try {
+      const timeoutMs = (options?.observationWindowMs || 3000) + 7000;
+      const resp = await fetch(`${ctx.daemonUrl}/api/verify/incident`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidentId, options }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.ok) return data.result;
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch failed') && !err.message.includes('ECONNREFUSED')) {
+        throw err;
+      }
+    }
+  }
+
+  throw new Error(
+    'Verification failed: No active browser session connected. Please ensure the BrowserTrack daemon is running ("browsertrack start") and your application tab is open in the browser.'
+  );
+}
+
+async function runVerifyNote(ctx: McpContext, noteId: string, options: any): Promise<any> {
+  if (ctx.noteVerificationEngine && ctx.sessionManager && ctx.sessionManager.getActiveCount() > 0) {
+    return await ctx.noteVerificationEngine.verifyNote(noteId, options);
+  }
+
+  if (ctx.daemonUrl) {
+    try {
+      const timeoutMs = (options?.observationWindowMs || 3000) + 7000;
+      const resp = await fetch(`${ctx.daemonUrl}/api/verify/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteId, options }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.ok) return data.result;
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch failed') && !err.message.includes('ECONNREFUSED')) {
+        throw err;
+      }
+    }
+  }
+
+  throw new Error(
+    'Verification failed: No active browser session connected. Please ensure the BrowserTrack daemon is running ("browsertrack start") and your application tab is open in the browser.'
+  );
+}
+
 export async function handleToolCall(name: string, args: any, ctx: McpContext): Promise<any> {
   const { db, sessionManager, verificationEngine, noteVerificationEngine } = ctx;
 
@@ -181,43 +288,20 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
     }
 
     case 'get_page_state': {
-      if (!sessionManager) {
-        throw new Error('Live browser connection not available: Daemon session manager not attached.');
-      }
-      let session = args.sessionId ? db.getSession(args.sessionId) : sessionManager.getAnyActiveSession();
-      if (!session) {
-        throw new Error('No active browser session connected.');
-      }
-
-      const cmdRes = await sessionManager.sendCommand(session.id, {
+      const cmdRes = await sendSessionCommand(ctx, args.sessionId, {
         id: `cmd_mcp_${Date.now()}`,
         type: 'get_page_state',
       });
-
-      if (!cmdRes.ok) {
-        throw new Error(cmdRes.error || 'Failed to retrieve page state from browser.');
-      }
       return cmdRes.result;
     }
 
     case 'capture_element': {
-      if (!sessionManager) {
-        throw new Error('Live browser connection not available: Daemon session manager not attached.');
-      }
-      let session = args.sessionId ? db.getSession(args.sessionId) : sessionManager.getAnyActiveSession();
-      if (!session) {
-        throw new Error('No active browser session connected.');
-      }
-
-      const cmdRes = await sessionManager.sendCommand(session.id, {
+      const cmdRes = await sendSessionCommand(ctx, args.sessionId, {
         id: `cmd_mcp_${Date.now()}`,
         type: 'capture_element',
         params: { selector: args.selector },
       });
 
-      if (!cmdRes.ok) {
-        throw new Error(cmdRes.error || cmdRes.reason || 'Failed to capture element screenshot.');
-      }
       return {
         ok: true,
         format: cmdRes.result?.format || 'webp',
@@ -228,11 +312,7 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
     }
 
     case 'verify_incident': {
-      if (!verificationEngine) {
-        throw new Error('Verification engine not available: Daemon session manager not attached.');
-      }
-
-      const res = await verificationEngine.verifyIncident(args.incidentId, {
+      const res = await runVerifyIncident(ctx, args.incidentId, {
         route: args.route,
         targetSelector: args.targetSelector,
         expect: args.expect,
@@ -399,10 +479,7 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
     }
 
     case 'verify_note': {
-      if (!noteVerificationEngine) {
-        throw new Error('Note verification engine not available: Daemon session manager not attached.');
-      }
-      const res = await noteVerificationEngine.verifyNote(args.noteId, {
+      const res = await runVerifyNote(ctx, args.noteId, {
         observationWindowMs: args.observationWindowMs,
       });
       return res;
@@ -417,27 +494,19 @@ export async function handleToolCall(name: string, args: any, ctx: McpContext): 
     }
 
     case 'capture_note_context': {
-      if (!sessionManager) {
-        throw new Error('Live browser connection not available: Daemon session manager not attached.');
-      }
-      let session = args.sessionId ? db.getSession(args.sessionId) : sessionManager.getAnyActiveSession();
-      if (!session) {
-        throw new Error('No active browser session connected.');
-      }
-
-      const queryCmd = await sessionManager.sendCommand(session.id, {
+      const queryCmd = await sendSessionCommand(ctx, args.sessionId, {
         id: `cmd_ctx_${Date.now()}`,
         type: 'query_element',
         params: { selector: args.selector },
       });
 
-      const overflowCmd = await sessionManager.sendCommand(session.id, {
+      const overflowCmd = await sendSessionCommand(ctx, args.sessionId, {
         id: `cmd_ovf_${Date.now()}`,
         type: 'check_overflow',
         params: { selector: args.selector },
       });
 
-      const styleCmd = await sessionManager.sendCommand(session.id, {
+      const styleCmd = await sendSessionCommand(ctx, args.sessionId, {
         id: `cmd_sty_${Date.now()}`,
         type: 'get_element_style',
         params: { selector: args.selector },

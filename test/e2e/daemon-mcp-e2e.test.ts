@@ -149,5 +149,15 @@ describe('BrowserTrack Full E2E Lifecycle (Daemon + WebSocket Client + MCP)', ()
 
     expect(pageState.url).toBe('http://localhost:5173/products/123');
     expect(pageState.title).toBe('Product Details');
+
+    // 6. Test Multi-process Standalone MCP Tool Call (no in-process session manager, bridges over HTTP to daemon)
+    const remotePageState = await handleToolCall(
+      'get_page_state',
+      { sessionId: receivedSessionId },
+      { db: daemon.db, daemonUrl: `http://127.0.0.1:${testPort}` }
+    );
+
+    expect(remotePageState.url).toBe('http://localhost:5173/products/123');
+    expect(remotePageState.title).toBe('Product Details');
   });
 });

@@ -8,6 +8,8 @@ order: 6
 
 BrowserTrack exposes 16 specialized Model Context Protocol (MCP) tools for AI agents.
 
+> **⚡ Automatic Server Lifecycle**: When your IDE starts the MCP server (`browsertrack mcp`), BrowserTrack automatically checks if the background daemon is already running. If not, it **automatically starts the HTTP (`http://127.0.0.1:7331`) and WebSocket (`ws://127.0.0.1:7331`) server** in the background, so your browser can connect immediately with zero manual terminal commands. If you already have a running daemon, MCP seamlessly connects to it.
+
 ---
 
 ## 📋 Incidents & Error Diagnostics
@@ -139,3 +141,43 @@ Triggers closed-loop bug fix verification (reloads browser, evaluates probes, ca
 Retrieves latest verification result and before/after screenshots for an incident.
 - **Arguments**:
   - `incidentId` (`string`, *required*): The ID of the incident.
+
+---
+
+## ⚠️ Troubleshooting MCP Client Setup
+
+If your AI editor fails to launch the MCP server with:
+```text
+Error: exec: "browsertrack": executable file not found in $PATH
+```
+
+This occurs because GUI applications (Cursor, Antigravity, VS Code, Claude Desktop) run without loading terminal shell rc files (`~/.zshrc`, `~/.bashrc`), leaving version managers like **NVM**, **fnm**, **asdf**, or **Homebrew** out of `$PATH`.
+
+### Recommended Fix
+Specify the absolute path to `npx` (find it with `which npx`), include `-y`, and explicitly set `PATH`:
+
+```json
+{
+  "mcpServers": {
+    "browsertrack": {
+      "command": "/Users/username/.nvm/versions/node/v20.19.5/bin/npx",
+      "args": ["-y", "browsertrack@latest", "mcp"],
+      "env": {
+        "PATH": "/Users/username/.nvm/versions/node/v20.19.5/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
+Or run directly via `node` for local projects:
+```json
+{
+  "mcpServers": {
+    "browsertrack": {
+      "command": "/Users/username/.nvm/versions/node/v20.19.5/bin/node",
+      "args": ["/path/to/browsertrack/dist/cli/index.js", "mcp"]
+    }
+  }
+}
+```

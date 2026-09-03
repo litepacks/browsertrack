@@ -17,6 +17,8 @@ browsertrack start
 
 This starts the local diagnostics server at `http://127.0.0.1:7331` (WebSocket at `ws://127.0.0.1:7331`).
 
+> **⚡ Zero-Config Auto-Start**: If you configure BrowserTrack via MCP in your AI editor (Cursor, Antigravity, Claude Code), you do **not** need to manually run `browsertrack start`! The MCP server automatically launches and manages a **single background daemon (singleton)** on port `7331`. Multiple windows or sessions share this single daemon without duplicate processes or port conflicts.
+
 ### 2. Connect Your Web Project
 
 #### Option A: Zero-install script tag (Plain HTML / Vite / Next.js)

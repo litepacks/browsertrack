@@ -18,6 +18,7 @@ import type {
   ScenarioOverview,
   ScenarioDetail,
 } from '../../../core/src/index.js';
+import { safeJsonParse, safeJsonStringify } from '../../../core/src/index.js';
 
 export class StorageDB {
   private db: Database.Database;
@@ -29,6 +30,7 @@ export class StorageDB {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('busy_timeout = 5000');
     this.initTables();
   }
 
@@ -161,18 +163,38 @@ export class StorageDB {
       CREATE INDEX IF NOT EXISTS idx_incidents_project ON incidents(project_id, status);
       CREATE INDEX IF NOT EXISTS idx_incidents_fp ON incidents(fingerprint);
       CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id, status);
-      CREATE INDEX IF NOT EXISTS idx_notes_scenario ON notes(scenario_id, step_number);
     `);
 
-    // Schema migrations for scenario fields
+    // Schema migrations for scenario fields on existing databases
     try {
-      this.db.exec('ALTER TABLE notes ADD COLUMN scenario_id TEXT;');
-    } catch {}
+      const columns = (this.db.prepare('PRAGMA table_info(notes)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      );
+      if (!columns.includes('scenario_id')) {
+        this.db.exec('ALTER TABLE notes ADD COLUMN scenario_id TEXT;');
+      }
+      if (!columns.includes('step_number')) {
+        this.db.exec('ALTER TABLE notes ADD COLUMN step_number INTEGER;');
+      }
+      if (!columns.includes('scenario_title')) {
+        this.db.exec('ALTER TABLE notes ADD COLUMN scenario_title TEXT;');
+      }
+    } catch {
+      // Fallback try-catch
+      try {
+        this.db.exec('ALTER TABLE notes ADD COLUMN scenario_id TEXT;');
+      } catch {}
+      try {
+        this.db.exec('ALTER TABLE notes ADD COLUMN step_number INTEGER;');
+      } catch {}
+      try {
+        this.db.exec('ALTER TABLE notes ADD COLUMN scenario_title TEXT;');
+      } catch {}
+    }
+
+    // Create scenario index after columns are guaranteed to exist
     try {
-      this.db.exec('ALTER TABLE notes ADD COLUMN step_number INTEGER;');
-    } catch {}
-    try {
-      this.db.exec('ALTER TABLE notes ADD COLUMN scenario_title TEXT;');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_notes_scenario ON notes(scenario_id, step_number);');
     } catch {}
   }
 
@@ -375,7 +397,7 @@ export class StorageDB {
       id: r.id,
       sessionId: r.session_id,
       eventType: r.event_type,
-      payload: JSON.parse(r.payload),
+      payload: safeJsonParse(r.payload, {}),
       timestamp: r.timestamp,
       route: r.route,
       url: r.url,
@@ -445,9 +467,9 @@ export class StorageDB {
         incident.occurrences,
         incident.status,
         incident.stack || null,
-        JSON.stringify(incident.breadcrumbs || []),
-        JSON.stringify(incident.networkFailures || []),
-        incident.lastElement ? JSON.stringify(incident.lastElement) : null,
+        safeJsonStringify(incident.breadcrumbs || []),
+        safeJsonStringify(incident.networkFailures || []),
+        incident.lastElement ? safeJsonStringify(incident.lastElement) : null,
         incident.screenshots?.error || null
       );
   }
@@ -475,8 +497,8 @@ export class StorageDB {
         update.lastSeen,
         update.occurrences,
         update.route,
-        JSON.stringify(update.breadcrumbs || []),
-        update.lastElement ? JSON.stringify(update.lastElement) : null,
+        safeJsonStringify(update.breadcrumbs || []),
+        update.lastElement ? safeJsonStringify(update.lastElement) : null,
         update.stack || null,
         incidentId
       );
@@ -500,8 +522,8 @@ export class StorageDB {
         occurrence.route,
         occurrence.url,
         occurrence.stack || null,
-        JSON.stringify(occurrence.breadcrumbs || []),
-        occurrence.lastElement ? JSON.stringify(occurrence.lastElement) : null
+        safeJsonStringify(occurrence.breadcrumbs || []),
+        occurrence.lastElement ? safeJsonStringify(occurrence.lastElement) : null
       );
   }
 
@@ -525,7 +547,7 @@ export class StorageDB {
         v.id,
         v.incidentId,
         v.status,
-        JSON.stringify(v.checks),
+        safeJsonStringify(v.checks),
         v.beforeScreenshot || null,
         v.afterScreenshot || null,
         v.message || null,
@@ -539,7 +561,7 @@ export class StorageDB {
     return {
       incidentId: row.incident_id,
       status: row.status as IncidentStatus,
-      checks: JSON.parse(row.checks || '[]'),
+      checks: safeJsonParse(row.checks, []),
       screenshots: {
         before: row.before_screenshot || undefined,
         after: row.after_screenshot || undefined,
@@ -567,11 +589,11 @@ export class StorageDB {
         note.message,
         note.route,
         note.url,
-        JSON.stringify(note.viewport),
-        JSON.stringify(note.scroll),
-        note.target ? JSON.stringify(note.target) : null,
-        note.elementContext ? JSON.stringify(note.elementContext) : null,
-        note.region ? JSON.stringify(note.region) : null,
+        safeJsonStringify(note.viewport),
+        safeJsonStringify(note.scroll),
+        note.target ? safeJsonStringify(note.target) : null,
+        note.elementContext ? safeJsonStringify(note.elementContext) : null,
+        note.region ? safeJsonStringify(note.region) : null,
         note.screenshots?.original || null,
         note.incidentId || null,
         note.scenarioId || null,
@@ -739,8 +761,8 @@ export class StorageDB {
         `nver_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         v.noteId,
         v.status,
-        JSON.stringify(v.checks),
-        v.geometryDiff ? JSON.stringify(v.geometryDiff) : null,
+        safeJsonStringify(v.checks),
+        v.geometryDiff ? safeJsonStringify(v.geometryDiff) : null,
         v.screenshots?.before || null,
         v.screenshots?.after || null,
         v.message || null,
@@ -754,8 +776,8 @@ export class StorageDB {
     return {
       noteId: row.note_id,
       status: row.status as NoteStatus,
-      checks: JSON.parse(row.checks || '[]'),
-      geometryDiff: row.geometry_diff ? JSON.parse(row.geometry_diff) : undefined,
+      checks: safeJsonParse(row.checks, []),
+      geometryDiff: safeJsonParse(row.geometry_diff, undefined),
       screenshots: {
         before: row.before_screenshot || undefined,
         after: row.after_screenshot || undefined,
@@ -798,9 +820,9 @@ export class StorageDB {
       occurrences: row.occurrences,
       status: row.status as IncidentStatus,
       stack: row.stack || undefined,
-      breadcrumbs: JSON.parse(row.breadcrumbs || '[]'),
-      networkFailures: JSON.parse(row.network_failures || '[]'),
-      lastElement: row.last_element ? JSON.parse(row.last_element) : undefined,
+      breadcrumbs: safeJsonParse(row.breadcrumbs, []),
+      networkFailures: safeJsonParse(row.network_failures, []),
+      lastElement: safeJsonParse(row.last_element, undefined),
       screenshots: row.screenshot_path
         ? {
             error: row.screenshot_path,
@@ -818,11 +840,11 @@ export class StorageDB {
       message: row.message,
       route: row.route,
       url: row.url,
-      viewport: JSON.parse(row.viewport_json || '{}'),
-      scroll: JSON.parse(row.scroll_json || '{}'),
-      target: row.target_json ? JSON.parse(row.target_json) : undefined,
-      elementContext: row.element_context_json ? JSON.parse(row.element_context_json) : undefined,
-      region: row.region_json ? JSON.parse(row.region_json) : undefined,
+      viewport: safeJsonParse(row.viewport_json, { width: 0, height: 0, devicePixelRatio: 1 }),
+      scroll: safeJsonParse(row.scroll_json, { scrollX: 0, scrollY: 0 }),
+      target: safeJsonParse(row.target_json, undefined),
+      elementContext: safeJsonParse(row.element_context_json, undefined),
+      region: safeJsonParse(row.region_json, undefined),
       status: row.status as NoteStatus,
       incidentId: row.incident_id || undefined,
       scenarioId: row.scenario_id || undefined,

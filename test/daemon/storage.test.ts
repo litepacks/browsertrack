@@ -120,4 +120,40 @@ describe('StorageDB (SQLite)', () => {
     const updated = db.getIncident('inc_1');
     expect(updated?.occurrences).toBe(2);
   });
+
+  it('should seamlessly migrate a legacy database without scenario columns', () => {
+    const legacyDbPath = path.join(os.tmpdir(), `bt_legacy_${Date.now()}.db`);
+    try {
+      // Create legacy database with old notes schema lacking scenario_id
+      const Database = (db as any).db.constructor;
+      const legacyRaw = new Database(legacyDbPath);
+      legacyRaw.exec(`
+        CREATE TABLE notes (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          session_id TEXT,
+          type TEXT,
+          message TEXT,
+          route TEXT,
+          url TEXT,
+          status TEXT DEFAULT 'OPEN',
+          created_at TEXT,
+          updated_at TEXT
+        );
+      `);
+      legacyRaw.close();
+
+      // Opening with StorageDB should not throw "no such column: scenario_id"
+      const migratedDb = new StorageDB(legacyDbPath);
+      const cols = (migratedDb as any).db.prepare('PRAGMA table_info(notes)').all().map((c: any) => c.name);
+      expect(cols).toContain('scenario_id');
+      expect(cols).toContain('step_number');
+      expect(cols).toContain('scenario_title');
+      migratedDb.close();
+    } finally {
+      if (fs.existsSync(legacyDbPath)) {
+        fs.unlinkSync(legacyDbPath);
+      }
+    }
+  });
 });

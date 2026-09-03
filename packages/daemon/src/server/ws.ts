@@ -1,10 +1,22 @@
 import crypto from 'node:crypto';
 import type { WebSocket, WebSocketServer } from 'ws';
 import type { ClientEventMessage, CommandResponse, HelloMessage } from '../../../core/src/index.js';
+import { safeJsonStringify } from '../../../core/src/index.js';
 import type { IncidentEngine } from '../incidents/engine.js';
 import type { NotesEngine } from '../notes/engine.js';
 import type { SessionManager } from '../session/manager.js';
 import type { StorageDB } from '../storage/db.js';
+
+function safeWsSend(ws: WebSocket, payload: any): boolean {
+  if (ws.readyState !== 1 /* WebSocket.OPEN */) return false;
+  try {
+    const raw = typeof payload === 'string' ? payload : safeJsonStringify(payload);
+    ws.send(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function setupWebSocketServer(
   wss: WebSocketServer,
@@ -65,23 +77,19 @@ export function setupWebSocketServer(
 
           sessionManager.registerSocket(sessionId, ws, hello.origin || '', project.id);
 
-          ws.send(
-            JSON.stringify({
-              type: 'hello_ack',
-              sessionId,
-              projectId: project.id,
-              projectName: project.name,
-            })
-          );
+          safeWsSend(ws, {
+            type: 'hello_ack',
+            sessionId,
+            projectId: project.id,
+            projectName: project.name,
+          });
 
           // Sync existing notes for this project on load
           const existingNotes = db.listNotes({ projectId: project.id, limit: 100 });
-          ws.send(
-            JSON.stringify({
-              type: 'notes_sync',
-              notes: existingNotes,
-            })
-          );
+          safeWsSend(ws, {
+            type: 'notes_sync',
+            notes: existingNotes,
+          });
 
           if (verbose) {
             console.log(`[BrowserTrack] New session connected: ${sessionId} (${project.name} @ ${hello.origin})`);
@@ -147,15 +155,13 @@ export function setupWebSocketServer(
             );
           }
 
-          ws.send(
-            JSON.stringify({
-              type: 'note_created_ack',
-              noteId: note.id,
-              status: note.status,
-              scenarioId: note.scenarioId,
-              stepNumber: note.stepNumber,
-            })
-          );
+          safeWsSend(ws, {
+            type: 'note_created_ack',
+            noteId: note.id,
+            status: note.status,
+            scenarioId: note.scenarioId,
+            stepNumber: note.stepNumber,
+          });
 
           // Broadcast updated notes to all active browser tabs in this project
           const allNotes = db.listNotes({ projectId: note.projectId, limit: 100 });
@@ -224,12 +230,10 @@ export function setupWebSocketServer(
           const projectId = data.projectId || session?.projectId;
           if (projectId) {
             const allNotes = db.listNotes({ projectId, limit: 100 });
-            ws.send(
-              JSON.stringify({
-                type: 'notes_sync',
-                notes: allNotes,
-              })
-            );
+            safeWsSend(ws, {
+              type: 'notes_sync',
+              notes: allNotes,
+            });
           }
           return;
         }

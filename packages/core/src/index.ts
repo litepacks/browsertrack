@@ -7,3 +7,4 @@ export * from './types/notes.js';
 export * from './fingerprint.js';
 export * from './redaction.js';
 export * from './selector.js';
+export * from './safety.js';
